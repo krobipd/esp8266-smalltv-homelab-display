@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Update</title>
+    <link rel="stylesheet" href="./css/style.css" />
+    <script src="./js/alpinejs.min.js" defer></script>
+    <script src="./js/utils.js"></script>
+    <script src="./js/themeSwitcher.js"></script>
+    <script src="./js/otaUploadHandler.js"></script>
+    <script src="./js/sicherungHandler.js"></script>
+    <script src="./js/rebootHandler.js"></script>
+    <script src="./js/main.js"></script>
+  </head>
+  <body>
+    <main class="container">
+      <header id="header-placeholder"></header>
+      <section>
+        <div x-data="sicherungHandler()" style="margin-top: 2em">
+          <h2>Einstellungen sichern</h2>
+          <p class="small">
+            ⚠️ Ein Update der <strong>Oberfläche</strong> löscht alle eingerichteten Werte —
+            das Abbild ersetzt den gesamten Speicherbereich und bringt selbst keine
+            Konfiguration mit. WLAN-Zugang und Passwort bleiben erhalten.
+            <strong>Vor dem Update hier sichern, danach wieder einspielen.</strong>
+          </p>
+          <button class="btn" x-bind:disabled="laeuft" @click="sichern">
+            Sicherung herunterladen
+          </button>
+
+          <p class="small" style="margin-top: 1.5em">Sicherung zurückspielen:</p>
+          <input type="file" x-ref="sicherungDatei" accept=".json" @change="dateiGewaehlt" />
+          <button class="btn" x-bind:disabled="laeuft || !dateiName" @click="einspielen">
+            Sicherung einspielen
+          </button>
+          <p class="small" x-show="fortschritt" x-text="fortschritt"></p>
+          <p x-show="meldung" x-text="meldung"></p>
+          <p class="err" x-show="fehler" x-text="fehler"></p>
+        </div>
+
+        <div x-data="otaUploadHandler()" style="margin-top: 2em">
+          <h2>Update einspielen</h2>
+          <p class="small">
+            Datei auswählen und hochladen — die Seite erkennt selbst, ob es die Firmware
+            oder die Oberfläche ist. Beide werden gebraucht; die Reihenfolge ist egal.
+          </p>
+          <form @submit.prevent="uploadFile">
+            <input type="file" x-ref="fileInput" required accept=".bin"
+                   @change="dateiGewaehlt" />
+            <p class="small" x-show="erkanntText"
+               x-text="'Erkannt: ' + erkanntText"></p>
+            <button type="submit"
+                    x-bind:disabled="uploading || erkannteArt === null">Hochladen</button>
+          </form>
+          <template x-if="uploading">
+            <div style="margin-top: 1em">
+              <label>Fortschritt</label>
+              <progress max="100" :value="progress"></progress>
+              <div
+                style="
+                  display: flex;
+                  gap: 1em;
+                  align-items: center;
+                  margin-top: 0.5em;
+                "
+              >
+                <div><strong x-text="progress + '%'"></strong></div>
+                <div x-text="etaText"></div>
+                <button @click="cancelUpload" type="button">Abbrechen</button>
+              </div>
+            </div>
+          </template>
+          <p x-text="uploadMessage"></p>
+        </div>
+
+        <!-- Neustart gehoert zur Geraetewartung -- bewusst HIER und nicht auf der
+             Startseite direkt unter dem Hauptmenue (Nutzer-Feedback 01.09.2026). -->
+        <div x-data="rebootHandler()" style="margin-top: 2em">
+          <h2>Neustart</h2>
+          <p class="small">
+            Startet das Gerät neu. Die Anzeige ist danach für rund eine halbe Minute weg,
+            Einstellungen bleiben erhalten.
+          </p>
+          <button
+            class="btn danger"
+            x-bind:disabled="loading"
+            x-on:click="reboot"
+          >
+            Gerät neu starten
+          </button>
+          <p x-text="message"></p>
+        </div>
+      </section>
+
+      <footer id="footer-placeholder"></footer>
+    </main>
+  </body>
+</html>

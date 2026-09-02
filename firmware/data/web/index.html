@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Homelab-Display</title>
+    <link rel="stylesheet" href="./css/style.css" />
+    <script src="./js/alpinejs.min.js" defer></script>
+    <script src="./js/utils.js"></script>
+    <script src="./js/themeSwitcher.js"></script>
+    <script src="./js/main.js"></script>
+  </head>
+  <body>
+    <main class="container">
+      <header id="header-placeholder"></header>
+
+      <section>
+        <h2>Übersicht</h2>
+        <p>
+          Dieses Display holt sich seine Werte selbst per HTTP (z.&nbsp;B. aus ioBroker)
+          und zeigt sie auf bis zu vier Seiten an.
+        </p>
+        <p>
+          Unter <a href="./slots.html"><strong>Werte</strong></a> werden die angezeigten
+          Datenpunkte eingerichtet — dort liegen auch Seitenaufteilung, Wechselintervall,
+          Helligkeit und Nachtmodus. Die übrigen Seiten: WLAN-Zugang, Uhrzeit (Zeitabgleich),
+          Bildschirmdrehung, Updates samt Geräte-Neustart, freiwilliger Passwortschutz und
+          das Protokoll.
+        </p>
+      </section>
+
+      <footer id="footer-placeholder"></footer>
+    </main>
+  </body>
+</html>

@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Bildschirmdrehung</title>
+    <link rel="stylesheet" href="./css/style.css" />
+    <script src="./js/alpinejs.min.js" defer></script>
+    <script src="./js/utils.js"></script>
+    <script src="./js/themeSwitcher.js"></script>
+    <script src="./js/rotationHandler.js"></script>
+    <script src="./js/main.js"></script>
+  </head>
+  <body>
+    <main class="container">
+      <header id="header-placeholder"></header>
+
+      <section x-data="rotationHandler()" x-init="init()">
+        <h2>Bildschirmdrehung</h2>
+
+        <p>Ausrichtung wählen — sie wird sofort übernommen.</p>
+
+        <label for="screen-rotation">Ausrichtung</label>
+        <select
+          id="screen-rotation"
+          x-model.number="rotation"
+          x-bind:disabled="loading"
+        >
+          <option value="0">Hochkant (0)</option>
+          <option value="1">Quer rechts (1)</option>
+          <option value="2">Über Kopf (2)</option>
+          <option value="3">Quer links (3)</option>
+          <option value="4">Hochkant gespiegelt (4)</option>
+          <option value="5">Quer rechts gespiegelt (5)</option>
+          <option value="6">Über Kopf gespiegelt (6)</option>
+          <option value="7">Quer links gespiegelt (7)</option>
+        </select>
+
+        <small
+          >Die Stufen 4 bis 7 sind gespiegelte Varianten.</small
+        >
+
+        <div
+          style="margin-top: 0.5em; display: flex; gap: 0.5em; flex-wrap: wrap"
+        >
+          <button
+            type="button"
+            class="btn"
+            @click="saveRotation()"
+            x-bind:disabled="loading"
+          >
+            Übernehmen
+          </button>
+          <button
+            type="button"
+            @click="fetchRotation()"
+            x-bind:disabled="loading"
+          >
+            Aktualisieren
+          </button>
+        </div>
+
+        <p x-text="statusMsg"></p>
+      </section>
+
+      <footer id="footer-placeholder"></footer>
+    </main>
+  </body>
+</html>

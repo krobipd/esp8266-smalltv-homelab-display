@@ -1,0 +1,534 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later
+ * Oberflaeche in der Handschrift des Fan-Controllers (Projekt A):
+ * dunkel, Monospace, schmale Rahmen, Farbvariablen fuer Hell/Dunkel.
+ * Ersetzt die frueher eingebundene CSS-Bibliothek vollstaendig -- deshalb muessen
+ * hier auch die Grundelemente (button, input, table ...) mitdefiniert sein. */
+
+:root {
+  --bg: #0a0e12;
+  --panel: #0f141b;
+  --bd: #1f2937;
+  --fg: #e2e8f0;
+  --mut: #64748b;
+  --dim: #475569;
+  --ok: #22c55e;
+  --warn: #f59e0b;
+  --err: #ef4444;
+  --acc: #38bdf8;
+  --btn: #16202e;
+  --danger: #2b1515;
+  --bok: #a7f3d0;
+  --bwarn: #fde68a;
+  --berr: #fecaca;
+}
+
+:root[data-theme="light"] {
+  --bg: #eef2f6;
+  --panel: #ffffff;
+  --bd: #cbd5e1;
+  --fg: #1e293b;
+  --mut: #64748b;
+  --dim: #94a3b8;
+  --ok: #16a34a;
+  --warn: #d97706;
+  --err: #dc2626;
+  --acc: #0284c7;
+  --btn: #e2e8f0;
+  --danger: #fee2e2;
+  --bok: #15803d;
+  --bwarn: #b45309;
+  --berr: #b91c1c;
+}
+
+html {
+  color-scheme: dark light;
+}
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 15px;
+}
+
+.container {
+  max-width: 1320px;
+  margin: 0 auto;
+  padding: 16px;
+}
+
+/* ---------- Kopf- und Fussbereich ---------- */
+header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  border-bottom: 1px solid var(--bd);
+  padding-bottom: 10px;
+  margin-bottom: 12px;
+}
+
+h1 {
+  font-size: 15px;
+  margin: 0;
+  letter-spacing: 0.1em;
+}
+h1 small {
+  color: var(--dim);
+  font-weight: 400;
+}
+h2 {
+  font-size: 14px;
+  letter-spacing: 0.08em;
+  margin: 18px 0 8px;
+}
+h3 {
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  color: var(--mut);
+  margin: 14px 0 6px;
+}
+
+footer {
+  margin-top: 24px;
+  padding-top: 10px;
+  border-top: 1px solid var(--bd);
+  color: var(--mut);
+  font-size: 11px;
+}
+
+/* ---------- Navigation ---------- */
+nav {
+  display: flex;
+  gap: 2px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+nav a {
+  text-decoration: none;
+}
+
+nav a .btn,
+nav .btn {
+  border-radius: 6px 6px 0 0;
+  border-bottom: none;
+}
+
+nav .btn.act {
+  background: var(--panel);
+  color: var(--fg);
+}
+
+/* ---------- Flaechen ---------- */
+main,
+section.panel {
+  background: var(--panel);
+  border: 1px solid var(--bd);
+  border-radius: 6px;
+  padding: 14px;
+}
+
+.card {
+  background: var(--bg);
+  border: 1px solid var(--bd);
+  border-left: 3px solid var(--ok);
+  border-radius: 6px;
+  padding: 14px;
+}
+.card.warn {
+  border-left-color: var(--warn);
+}
+.card.alarm {
+  border-left-color: var(--err);
+}
+.card.stale {
+  border-left-color: var(--dim);
+  opacity: 0.65;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 12px;
+}
+
+.row {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.col {
+  flex: 1;
+  min-width: 260px;
+}
+
+.list {
+  border: 1px solid var(--bd);
+  border-radius: 6px;
+  margin-top: 8px;
+}
+.list > div {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--bd);
+}
+.list > div:last-child {
+  border-bottom: none;
+}
+
+/* ---------- Bedienelemente ---------- */
+button,
+.btn {
+  font: inherit;
+  font-size: 12px;
+  letter-spacing: 0.05em;
+  padding: 7px 14px;
+  border: 1px solid var(--bd);
+  border-radius: 6px;
+  background: var(--btn);
+  color: var(--fg);
+  cursor: pointer;
+  margin: 6px 6px 0 0;
+}
+
+button:hover,
+.btn:hover {
+  border-color: var(--acc);
+}
+
+button:disabled,
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.btn.danger,
+button.danger {
+  background: var(--danger);
+  border-color: var(--err);
+}
+
+.btn.ghost {
+  background: none;
+  color: var(--dim);
+}
+
+label {
+  display: block;
+  color: var(--mut);
+  font-size: 11px;
+  margin: 10px 0 3px;
+  letter-spacing: 0.05em;
+}
+
+input[type="text"],
+input[type="password"],
+input[type="number"],
+input[type="url"],
+input[type="file"],
+select,
+textarea {
+  width: 100%;
+  max-width: 340px;
+  font: inherit;
+  font-size: 13px;
+  padding: 7px;
+  background: var(--bg);
+  border: 1px solid var(--bd);
+  border-radius: 6px;
+  color: var(--fg);
+}
+
+input[type="color"] {
+  width: 46px;
+  height: 30px;
+  padding: 2px;
+  background: var(--bg);
+  border: 1px solid var(--bd);
+  border-radius: 6px;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  outline: none;
+  border-color: var(--acc);
+}
+
+input[type="range"] {
+  width: 100%;
+  max-width: 340px;
+  accent-color: var(--acc);
+}
+
+progress {
+  width: 100%;
+  max-width: 340px;
+  accent-color: var(--acc);
+}
+
+/* ---------- Text und Zustaende ---------- */
+.kv {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 6px 18px;
+  font-size: 13px;
+}
+.kv b {
+  color: var(--mut);
+  font-weight: 400;
+}
+
+.badge {
+  font-size: 10px;
+  padding: 1px 7px;
+  border-radius: 8px;
+  border: 1px solid var(--bd);
+}
+.b-ok {
+  color: var(--bok);
+}
+.b-warn {
+  color: var(--bwarn);
+}
+.b-err {
+  color: var(--berr);
+}
+
+.muted {
+  color: var(--mut);
+}
+.small {
+  font-size: 11px;
+}
+.err {
+  color: var(--err);
+}
+.ok {
+  color: var(--ok);
+}
+
+pre {
+  background: var(--bg);
+  border: 1px solid var(--bd);
+  border-radius: 6px;
+  padding: 10px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 45vh;
+  overflow: auto;
+  font-size: 11px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+th,
+td {
+  text-align: left;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--bd);
+}
+th {
+  color: var(--mut);
+  font-weight: 400;
+  font-size: 11px;
+  letter-spacing: 0.05em;
+}
+
+hr {
+  border: 0;
+  border-top: 1px solid var(--bd);
+  margin: 16px 0;
+}
+
+a {
+  color: var(--acc);
+}
+
+/* ---------- Umschalter Hell/Dunkel ---------- */
+.theme-switch-btn {
+  font: inherit;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  background: none;
+  border: 1px solid var(--bd);
+  border-radius: 6px;
+  color: var(--mut);
+  padding: 4px 9px;
+  margin: 0;
+}
+
+/* ---------- Vorschau einer Kachel (240x240 wie das Display) ---------- */
+.preview {
+  width: 240px;
+  height: 240px;
+  background: #000;
+  border: 1px solid var(--bd);
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  overflow: hidden;
+}
+.preview .pv-label {
+  font-size: 13px;
+  color: #94a3b8;
+  letter-spacing: 0.05em;
+}
+.preview .pv-value {
+  font-weight: 700;
+  line-height: 1;
+}
+/* Wert und Einheit stehen auf derselben UNTERkante -- wie auf dem Geraet
+   (layoutWertEinheit in smalltv_util.h). Oben ausgerichtet haenge eine kleine
+   Einheit neben einer grossen Zahl in der Luft. */
+.preview .pv-zeile {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.25em;
+}
+.preview .pv-bar {
+  width: 75%;
+  height: 18px;
+  border: 1px solid #8c71a0;
+  border-color: #64748b;
+  box-sizing: border-box;
+}
+.preview .pv-bar-fill {
+  height: 100%;
+  transition: width 0.2s;
+}
+.preview .pv-unit {
+  font-size: 13px;
+  color: #64748b;
+}
+
+/* ---------- Klassen der uebernommenen Seiten ----------
+ * Diese Namen stammen aus der Basis-Firmware und werden von deren Seiten
+ * (vor allem wifi.html) verwendet. Sie bleiben erhalten, bekommen hier aber
+ * die Farben und Abstaende der neuen Optik. Nicht umbenennen -- die Handler
+ * und Vorlagen der Basis sprechen sie an. */
+.wifi-back-link {
+  margin-left: 1.5em;
+}
+.wifi-section {
+  margin-top: 1.5rem;
+}
+.wifi-connect {
+  margin-top: 1.2rem;
+}
+.password-row,
+.action-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.action-row {
+  margin-top: 0.5rem;
+}
+.scan-table-container {
+  margin-top: 1em;
+  overflow-x: auto;
+}
+.wifi-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.wifi-table th,
+.wifi-table td {
+  padding: 7px 10px;
+  vertical-align: middle;
+  border-bottom: 1px solid var(--bd);
+  text-align: left;
+}
+.wifi-table th {
+  color: var(--mut);
+  font-weight: 400;
+  font-size: 11px;
+  letter-spacing: 0.05em;
+}
+.ssid-cell {
+  max-width: 260px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.signal-cell,
+.signal-cell .bars {
+  color: var(--mut);
+}
+.signal-cell .bars {
+  font-family: inherit;
+  margin-left: 0.5rem;
+}
+.no-networks {
+  padding: 0.6rem;
+  color: var(--mut);
+}
+.scan-btn {
+  margin-right: 0.6rem;
+}
+.eye-btn {
+  background: none;
+  border: none;
+  padding: 0.15rem;
+  margin: 0;
+  cursor: pointer;
+  color: var(--mut);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
+}
+.eye-btn:hover {
+  color: var(--fg);
+}
+.eye-btn svg {
+  display: block;
+  overflow: visible;
+  width: 18px;
+  height: 18px;
+}
+
+/* Uebergangseffekt des Hell/Dunkel-Umschalters aus der Basis */
+#theme-waterdrop-overlay {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  z-index: 40;
+  background: var(--theme-waterdrop-bg, #111);
+}
+#theme-waterdrop-overlay.active {
+  pointer-events: none;
+}
+
+/* ---------- Meldung ---------- */
+#toast {
+  position: fixed;
+  bottom: 16px;
+  right: 16px;
+  background: var(--btn);
+  border: 1px solid var(--bd);
+  border-radius: 6px;
+  padding: 10px 14px;
+  display: none;
+  font-size: 12px;
+  z-index: 50;
+}

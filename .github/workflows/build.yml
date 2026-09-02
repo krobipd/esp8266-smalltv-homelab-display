@@ -1,0 +1,46 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Cache PlatformIO
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio
+            firmware/.pio
+          key: pio-esp8266-${{ hashFiles('firmware/platformio.ini') }}
+
+      - name: Install PlatformIO
+        run: pip install --upgrade platformio
+
+      - name: Build firmware
+        run: pio run
+        working-directory: firmware
+
+      - name: Build filesystem image
+        run: pio run -t buildfs
+        working-directory: firmware
+
+      # Die Tests der Update-Erkennung laufen gegen die WIRKLICH gebauten Abbilder --
+      # deshalb wird hier dasselbe Paket gebaut wie bei einem Release.
+      - name: Package images
+        run: tools/paket.sh
+
+      # Ganze geraetelose Kette: Host-Tests (C++), Syntaxpruefung der Oberflaeche,
+      # Verhaltenstests gegen den Mock.
+      - name: Run test suite
+        run: tools/run_tests.sh

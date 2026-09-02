@@ -1,0 +1,502 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Werte — GeekMagic Open Firmware</title>
+    <link rel="stylesheet" href="./css/style.css" />
+    <script src="./js/alpinejs.min.js" defer></script>
+    <script src="./js/utils.js"></script>
+    <script src="./js/themeSwitcher.js"></script>
+    <script src="./js/slotsHandler.js"></script>
+    <script src="./js/main.js"></script>
+  </head>
+  <body>
+    <main class="container" x-data="slotsHandler()" x-init="init()">
+      <header id="header-placeholder"></header>
+
+      <section class="panel">
+        <p class="muted small" x-show="laden">Lade …</p>
+        <p class="err small" x-show="fehler" x-text="fehler"></p>
+        <p class="ok small" x-show="meldung" x-text="meldung"></p>
+
+        <!-- ---------- Übersicht ---------- -->
+        <div x-show="!laden && !modus && !zeigtEinstellungen">
+          <div class="grid">
+            <template x-for="s in belegteSlots()" :key="s.index">
+              <div :class="kachelKlasse(s.index)">
+                <div class="row" style="justify-content: space-between; gap: 6px">
+                  <span class="small muted" x-text="s.label || '(ohne Beschriftung)'"></span>
+                  <span class="badge small" x-show="!s.enabled">aus</span>
+                  <span class="badge small" x-show="s.enabled && statusVon(s.index)?.stale">veraltet</span>
+                </div>
+                <div style="font-size: 34px; font-weight: 700; margin: 6px 0">
+                  <span x-text="anzeigeWert(s.index)"></span>
+                  <span class="small muted" x-text="s.unit"></span>
+                </div>
+                <div class="small muted">
+                  Seite <span x-text="s.page"></span>, Platz <span x-text="s.pos"></span>
+                  · alle <span x-text="s.refreshSec"></span> s
+                  <span x-show="alterText(s.index)" x-text="'· ' + alterText(s.index)"></span>
+                </div>
+                <div class="small err" x-show="statusVon(s.index) && !statusVon(s.index).ok"
+                     x-text="statusVon(s.index)?.error"></div>
+                <div>
+                  <button class="btn" @click="slotAendern(s.index)">Ändern</button>
+                  <button class="btn" @click="umschalten(s.index)"
+                          x-text="s.enabled ? 'Ausschalten' : 'Einschalten'"></button>
+                  <button class="btn danger" @click="loeschen(s.index)">Löschen</button>
+                </div>
+              </div>
+            </template>
+          </div>
+
+          <p class="muted small" x-show="belegteSlots().length === 0">
+            Noch kein Wert eingerichtet. Mit „Neuer Wert“ eine Adresse hinterlegen.
+          </p>
+
+          <button class="btn" @click="neuerSlot()">+ Neuer Wert</button>
+          <button class="btn" @click="einstellungenOeffnen()">Seiten &amp; Wechsel</button>
+        </div>
+
+        <!-- ---------- Seiteneinstellungen ---------- -->
+        <div x-show="zeigtEinstellungen">
+          <h2>Seiten und Wechsel</h2>
+          <p class="muted small">
+            Auf das kleine Display passen höchstens vier Werte gleichzeitig. Sind es mehr,
+            blättert das Gerät selbstständig durch die Seiten, damit alles einmal drankommt.
+          </p>
+
+          <div class="row">
+            <div class="col">
+              <label for="rot">Wechsel alle … Sekunden (0 = kein Wechsel)</label>
+              <input id="rot" type="number" min="0" max="3600" x-model.number="eRotate" />
+              <p class="small muted" x-show="umlaufSek() > 0">
+                Bei <span x-text="genutzteSeiten()"></span> belegten Seiten dauert es
+                <strong x-text="umlaufSek()"></strong> Sekunden, bis ein Wert wieder zu sehen ist.
+              </p>
+              <p class="small muted" x-show="umlaufSek() === 0">
+                Alles liegt auf einer Seite — es wird nicht gewechselt.
+              </p>
+              <p class="small muted">
+                Plätze insgesamt: <strong x-text="plaetzeGesamt()"></strong> von höchstens 12 Werten.
+              </p>
+            </div>
+
+            <div class="col">
+              <label>Aufteilung je Seite</label>
+              <template x-for="(l, i) in eLayout" :key="i">
+                <div style="margin-bottom: 6px">
+                  <span class="small muted">Seite <span x-text="i + 1"></span></span>
+                  <select x-model.number="eLayout[i]">
+                    <option value="0">1 großer Wert</option>
+                    <option value="1">2 Werte übereinander</option>
+                    <option value="2">4 Werte</option>
+                  </select>
+                  <!-- Nur bei zwei Werten übereinander gibt es zwei Hälften zu teilen. -->
+                  <template x-if="Number(eLayout[i]) === 1">
+                    <select x-model.number="eTeilung[i]" style="margin-top: 4px">
+                      <option value="0">Höhe automatisch (nach Schriftgröße)</option>
+                      <option value="30">oben 30 % · unten 70 %</option>
+                      <option value="40">oben 40 % · unten 60 %</option>
+                      <option value="50">beide gleich hoch</option>
+                      <option value="60">oben 60 % · unten 40 %</option>
+                      <option value="70">oben 70 % · unten 30 %</option>
+                    </select>
+                  </template>
+                </div>
+              </template>
+            </div>
+
+            <div class="col">
+              <label for="hmodus">Helligkeit</label>
+              <select id="hmodus" x-model.number="eHellModus">
+                <option value="0">fester Wert</option>
+                <option value="1">über einen Datenpunkt geschaltet</option>
+              </select>
+
+              <template x-if="Number(eHellModus) === 0">
+                <div>
+                  <label for="hell">Helligkeit (<span x-text="eHell"></span> %)</label>
+                  <input id="hell" type="range" min="0" max="100" x-model.number="eHell" />
+                </div>
+              </template>
+
+              <template x-if="Number(eHellModus) === 1">
+                <div>
+                  <label for="hurl">Adresse des Schalters</label>
+                  <input id="hurl" type="url" maxlength="127" x-model="eHellUrl"
+                         placeholder="http://192.0.2.10:8082/rest-api/v1/state/…/plain" />
+                  <label for="hfield">Feld (leer = ganze Antwort)</label>
+                  <input id="hfield" type="text" maxlength="31" x-model="eHellField" />
+                  <label for="hsec">Wie oft abfragen? (Sekunden)</label>
+                  <input id="hsec" type="number" min="5" max="3600" x-model.number="eHellSec" />
+                  <label for="han">Helligkeit bei „an" (<span x-text="eHellAn"></span> %)</label>
+                  <input id="han" type="range" min="0" max="100" x-model.number="eHellAn" />
+                  <label for="haus">Helligkeit bei „aus" (<span x-text="eHellAus"></span> %)</label>
+                  <input id="haus" type="range" min="0" max="100" x-model.number="eHellAus" />
+                  <p class="small muted">
+                    Als „an" gelten <code>true</code>, <code>on</code>, <code>an</code> und jede
+                    Zahl außer 0. Alles andere zählt als „aus". Antwortet der Datenpunkt nicht,
+                    bleibt der zuletzt bekannte Zustand stehen.
+                  </p>
+                </div>
+              </template>
+
+              <label style="margin-top: 14px">
+                <input type="checkbox" x-model="eNachtAn" style="width:auto" />
+                Nachts dunkler stellen
+              </label>
+              <template x-if="eNachtAn">
+                <div>
+                  <label for="nvon">Ab Uhrzeit</label>
+                  <select id="nvon" x-model.number="eNachtVon">
+                    <template x-for="h in 24" :key="h">
+                      <option :value="h - 1" x-text="(h - 1) + ':00'"></option>
+                    </template>
+                  </select>
+                  <label for="nbis">Bis Uhrzeit</label>
+                  <select id="nbis" x-model.number="eNachtBis">
+                    <template x-for="h in 24" :key="h">
+                      <option :value="h - 1" x-text="(h - 1) + ':00'"></option>
+                    </template>
+                  </select>
+                  <label for="nhell">Helligkeit nachts (<span x-text="eNachtHell"></span> %)</label>
+                  <input id="nhell" type="range" min="0" max="100" x-model.number="eNachtHell" />
+                  <p class="small muted" x-show="Number(eNachtHell) === 0">
+                    0 % schaltet das Display in dieser Zeit ganz aus.
+                  </p>
+                  <p class="small muted" x-show="Number(eNachtVon) === Number(eNachtBis)">
+                    Gleiche Anfangs- und Endzeit heißt: kein Nachtmodus.
+                  </p>
+                </div>
+              </template>
+            </div>
+
+            <div class="col">
+              <label for="cw">Farbe bei Warnung</label>
+              <input id="cw" type="color" x-model="eWarnHex" />
+              <label for="ca">Farbe bei Alarm</label>
+              <input id="ca" type="color" x-model="eAlarmHex" />
+              <p class="small muted">
+                Gilt für alle Werte — ein Alarm soll überall gleich aussehen.
+              </p>
+            </div>
+          </div>
+
+          <hr />
+          <div class="action-row">
+            <button class="btn" @click="einstellungenSpeichern()">Speichern</button>
+            <button class="btn ghost" @click="zeigtEinstellungen = false; fehler = ''">Abbrechen</button>
+          </div>
+        </div>
+
+        <!-- ---------- Assistent ---------- -->
+        <div x-show="modus === 'assistent'">
+          <h2>Neuer Wert — Schritt <span x-text="schritt"></span> von 5</h2>
+
+          <!-- Schritt 1: Adresse + Test -->
+          <div x-show="schritt === 1">
+            <h3>Woher kommt der Wert?</h3>
+            <label for="url">Adresse (muss mit http:// beginnen)</label>
+            <input id="url" type="url" maxlength="127" x-model="entwurf.url"
+                   placeholder="http://192.0.2.10:8082/rest-api/v1/state/…/plain" />
+            <p class="muted small">
+              Endet die Adresse auf <code>/plain</code>, ist die Antwort direkt der Wert –
+              dann entfällt die Feldauswahl.
+            </p>
+            <div class="action-row">
+              <button class="btn" @click="testen()" :disabled="testLaeuft">
+                <span x-show="!testLaeuft">Testen</span>
+                <span x-show="testLaeuft">Das Gerät ruft ab …</span>
+              </button>
+            </div>
+
+            <template x-if="testErgebnis">
+              <div style="margin-top: 12px">
+                <p class="small" :class="testErgebnis.ok ? 'ok' : 'err'">
+                  <span x-show="testErgebnis.ok">Das Gerät hat die Adresse erreicht.</span>
+                  <span x-show="!testErgebnis.ok">
+                    Fehlgeschlagen:
+                    <span x-text="testErgebnis.error || ('HTTP ' + testErgebnis.httpStatus)"></span>
+                  </span>
+                </p>
+                <label x-show="testErgebnis.preview">Antwort (gekürzt)</label>
+                <pre x-show="testErgebnis.preview" x-text="testErgebnis.preview"></pre>
+              </div>
+            </template>
+          </div>
+
+          <!-- Schritt 2: Feld wählen -->
+          <div x-show="schritt === 2">
+            <h3>Welches Feld soll angezeigt werden?</h3>
+            <p class="muted small" x-show="!testErgebnis || (testErgebnis.fields || []).length === 0">
+              Die Antwort enthält kein JSON-Objekt – die gesamte Antwort wird als Wert verwendet.
+            </p>
+            <div class="list" x-show="testErgebnis && (testErgebnis.fields || []).length > 0">
+              <template x-for="f in (testErgebnis?.fields || [])" :key="f">
+                <div>
+                  <span x-text="f"></span>
+                  <button class="btn" @click="feldWaehlen(f)"
+                          :class="entwurf.field === f ? 'btn act' : 'btn'">
+                    <span x-show="entwurf.field === f">gewählt</span>
+                    <span x-show="entwurf.field !== f">wählen</span>
+                  </button>
+                </div>
+              </template>
+            </div>
+          </div>
+
+          <!-- Schritt 3: Beschriftung -->
+          <div x-show="schritt === 3">
+            <h3>Wie soll der Wert heißen?</h3>
+            <label for="label">Beschriftung</label>
+            <input id="label" type="text" x-model="entwurf.label" maxlength="23"
+                   placeholder="z. B. Verbrauch" />
+            <label for="unit">Einheit (optional)</label>
+            <input id="unit" type="text" x-model="entwurf.unit" maxlength="15"
+                   placeholder="z. B. W" />
+            <label for="dec">Nachkommastellen</label>
+            <select id="dec" x-model.number="entwurf.decimals">
+              <option value="0">0</option>
+              <option value="1">1</option>
+              <option value="2">2</option>
+              <option value="3">3</option>
+            </select>
+            <label for="refresh">Wie oft abrufen? (Sekunden, 5 bis 3600)</label>
+            <input id="refresh" type="number" min="5" max="3600" x-model.number="entwurf.refreshSec" />
+          </div>
+
+          <!-- Schritt 4: Aussehen + Vorschau -->
+          <div x-show="schritt === 4">
+            <h3>Wie soll es aussehen?</h3>
+            <div class="row">
+              <div class="col">
+                <label for="page">Seite</label>
+                <select id="page" x-model.number="entwurf.page"
+                        @change="entwurf.pos = ersterFreierPlatz(Number(entwurf.page))">
+                  <option value="1">1</option><option value="2">2</option>
+                  <option value="3">3</option><option value="4">4</option>
+                </select>
+                <label for="pos">Platz auf der Seite</label>
+                <select id="pos" x-model.number="entwurf.pos">
+                  <template x-for="p in (maxPos(Number(entwurf.page)) + 1)" :key="p">
+                    <option :value="p - 1" x-text="p"></option>
+                  </template>
+                </select>
+                <!-- ACHTUNG: Dieses Formular existiert ZWEIMAL (Assistent Schritt 4 und
+                     Aendern-Formular, Suchwort "Darstellung"). Wer hier Optionen ergaenzt
+                     (Darstellung, Schrift), muss die zweite Stelle mitziehen -- sonst
+                     bieten Assistent und Aendern unterschiedliche Auswahlen an. -->
+                <label for="anz">Darstellung</label>
+                <select id="anz" x-model.number="entwurf.anzeige">
+                  <option value="0">nur Zahl</option>
+                  <option value="1">nur Balken</option>
+                  <option value="2">Balken mit Zahl</option>
+                </select>
+                <template x-if="zeigtBalken()">
+                  <div>
+                    <label for="bmin">Balken-Anfang</label>
+                    <input id="bmin" type="number" step="any" x-model.number="entwurf.barMin" />
+                    <label for="bmax">Balken-Ende</label>
+                    <input id="bmax" type="number" step="any" x-model.number="entwurf.barMax" />
+                  </div>
+                </template>
+                <label for="wert-size">Schriftgröße Wert (1–10)</label>
+                <select id="wert-size" x-model.number="entwurf.wertSize"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="6">6</option><option value="7">7</option><option value="8">8</option><option value="9">9</option><option value="10">10</option></select>
+                <label for="label-size">Schriftgröße Beschriftung (1–10)</label>
+                <select id="label-size" x-model.number="entwurf.labelSize"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="6">6</option><option value="7">7</option><option value="8">8</option><option value="9">9</option><option value="10">10</option></select>
+                <label for="unit-size">Schriftgröße Einheit (1–10)</label>
+                <select id="unit-size" x-model.number="entwurf.unitSize"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="6">6</option><option value="7">7</option><option value="8">8</option><option value="9">9</option><option value="10">10</option></select>
+                <label>
+                  <input type="checkbox" x-model="entwurf.einheitDaneben" style="width:auto" />
+                  Einheit neben dem Wert
+                </label>
+                <label for="color">Farbe</label>
+                <input id="color" type="color" x-model="entwurf.colorHex" />
+              </div>
+              <div class="col">
+                <label>Vorschau (so groß wie das Display)</label>
+                <div class="preview">
+                  <div class="pv-label" :style="`font-size:${vorschauPx('labelSize')}px`"
+                       x-text="entwurf.label || 'Beschriftung'"></div>
+                  <div class="pv-zeile" x-show="zeigtZahl()">
+                    <div class="pv-value"
+                         :style="`font-size:${vorschauPx('wertSize')}px;color:${entwurf.colorHex}`"
+                         x-text="vorschauWert()"></div>
+                    <div class="pv-unit" x-show="einheitNebenWert()"
+                         :style="`font-size:${vorschauPx('unitSize')}px`"
+                         x-text="entwurf.unit"></div>
+                  </div>
+                  <div class="pv-bar" x-show="zeigtBalken()">
+                    <div class="pv-bar-fill"
+                         :style="`width:${(vorschauAnteil()*100).toFixed(1)}%;background:${entwurf.colorHex}`"></div>
+                  </div>
+                  <div class="pv-unit" x-show="!einheitNebenWert()"
+                       :style="`font-size:${vorschauPx('unitSize')}px`"
+                       x-text="entwurf.unit"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Schritt 5: Schwellwerte -->
+          <div x-show="schritt === 5">
+            <h3>Wann soll gewarnt werden?</h3>
+            <p class="muted small">
+              Leer lassen heißt: keine Grenze. Ein Alarm zieht die betroffene Seite nach vorn.
+            </p>
+            <div class="row">
+              <div class="col">
+                <label for="wa">Warnung ab (über)</label>
+                <input id="wa" type="number" step="any" x-model="entwurf.warnAbove" />
+                <label for="aa">Alarm ab (über)</label>
+                <input id="aa" type="number" step="any" x-model="entwurf.alarmAbove" />
+              </div>
+              <div class="col">
+                <label for="wb">Warnung ab (unter)</label>
+                <input id="wb" type="number" step="any" x-model="entwurf.warnBelow" />
+                <label for="ab">Alarm ab (unter)</label>
+                <input id="ab" type="number" step="any" x-model="entwurf.alarmBelow" />
+              </div>
+            </div>
+          </div>
+
+          <hr />
+          <div class="action-row">
+            <button class="btn" @click="zurueck()" x-show="schritt > 1">Zurück</button>
+            <button class="btn" @click="weiter()" x-show="schritt < 5">Weiter</button>
+            <button class="btn" @click="speichern()" x-show="schritt === 5">Speichern</button>
+            <button class="btn ghost" @click="abbrechen()">Abbrechen</button>
+          </div>
+        </div>
+
+        <!-- ---------- Ändern ---------- -->
+        <div x-show="modus === 'aendern'">
+          <h2>Wert ändern</h2>
+          <div class="row">
+            <div class="col">
+              <label>
+                <input type="checkbox" x-model="entwurf.enabled" style="width:auto" />
+                Wert anzeigen
+              </label>
+              <label for="e-url">Adresse</label>
+              <input id="e-url" type="url" maxlength="127" x-model="entwurf.url" />
+              <div class="action-row">
+                <button class="btn" @click="testen()" :disabled="testLaeuft">Testen</button>
+              </div>
+              <template x-if="testErgebnis">
+                <p class="small" :class="testErgebnis.ok ? 'ok' : 'err'"
+                   x-text="testErgebnis.ok ? 'Erreichbar.' : (testErgebnis.error || 'Nicht erreichbar')"></p>
+              </template>
+
+              <label for="e-field">Feld (leer = ganze Antwort)</label>
+              <input id="e-field" type="text" x-model="entwurf.field" maxlength="31" />
+              <label for="e-label">Beschriftung</label>
+              <input id="e-label" type="text" x-model="entwurf.label" maxlength="23" />
+              <label for="e-unit">Einheit</label>
+              <input id="e-unit" type="text" x-model="entwurf.unit" maxlength="15" />
+              <label for="e-dec">Nachkommastellen</label>
+              <select id="e-dec" x-model.number="entwurf.decimals">
+                <option value="0">0</option><option value="1">1</option>
+                <option value="2">2</option><option value="3">3</option>
+              </select>
+              <label for="e-refresh">Abrufintervall (s)</label>
+              <input id="e-refresh" type="number" min="5" max="3600" x-model.number="entwurf.refreshSec" />
+            </div>
+
+            <div class="col">
+              <label for="e-page">Seite</label>
+              <select id="e-page" x-model.number="entwurf.page"
+                      @change="entwurf.pos = ersterFreierPlatz(Number(entwurf.page))">
+                <option value="1">1</option><option value="2">2</option>
+                <option value="3">3</option><option value="4">4</option>
+              </select>
+              <label for="e-pos">Platz</label>
+              <select id="e-pos" x-model.number="entwurf.pos">
+                <template x-for="p in (maxPos(Number(entwurf.page)) + 1)" :key="p">
+                  <option :value="p - 1" x-text="p"></option>
+                </template>
+              </select>
+              <!-- ACHTUNG: Zweitfassung des Formular-Blocks aus dem Assistenten
+                   (Schritt 4) -- Aenderungen an den Auswahllisten dort mitziehen. -->
+              <label for="e-anz">Darstellung</label>
+              <select id="e-anz" x-model.number="entwurf.anzeige">
+                <option value="0">nur Zahl</option>
+                <option value="1">nur Balken</option>
+                <option value="2">Balken mit Zahl</option>
+              </select>
+              <template x-if="zeigtBalken()">
+                <div>
+                  <label for="e-bmin">Balken-Anfang</label>
+                  <input id="e-bmin" type="number" step="any" x-model.number="entwurf.barMin" />
+                  <label for="e-bmax">Balken-Ende</label>
+                  <input id="e-bmax" type="number" step="any" x-model.number="entwurf.barMax" />
+                </div>
+              </template>
+              <label for="e-wert-size">Schriftgröße Wert (1–10)</label>
+              <select id="e-wert-size" x-model.number="entwurf.wertSize"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="6">6</option><option value="7">7</option><option value="8">8</option><option value="9">9</option><option value="10">10</option></select>
+              <label for="e-label-size">Schriftgröße Beschriftung (1–10)</label>
+              <select id="e-label-size" x-model.number="entwurf.labelSize"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="6">6</option><option value="7">7</option><option value="8">8</option><option value="9">9</option><option value="10">10</option></select>
+              <label for="e-unit-size">Schriftgröße Einheit (1–10)</label>
+              <select id="e-unit-size" x-model.number="entwurf.unitSize"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="6">6</option><option value="7">7</option><option value="8">8</option><option value="9">9</option><option value="10">10</option></select>
+              <label>
+                <input type="checkbox" x-model="entwurf.einheitDaneben" style="width:auto" />
+                Einheit neben dem Wert
+              </label>
+              <label for="e-color">Farbe</label>
+              <input id="e-color" type="color" x-model="entwurf.colorHex" />
+
+              <label>Vorschau</label>
+              <div class="preview">
+                <div class="pv-label" :style="`font-size:${vorschauPx('labelSize')}px`"
+                       x-text="entwurf.label || 'Beschriftung'"></div>
+                <div class="pv-zeile" x-show="zeigtZahl()">
+                  <div class="pv-value"
+                       :style="`font-size:${vorschauPx('wertSize')}px;color:${entwurf.colorHex}`"
+                       x-text="vorschauWert()"></div>
+                  <div class="pv-unit" x-show="einheitNebenWert()"
+                       :style="`font-size:${vorschauPx('unitSize')}px`"
+                       x-text="entwurf.unit"></div>
+                </div>
+                <div class="pv-bar" x-show="zeigtBalken()">
+                  <div class="pv-bar-fill"
+                       :style="`width:${(vorschauAnteil()*100).toFixed(1)}%;background:${entwurf.colorHex}`"></div>
+                </div>
+                <div class="pv-unit" x-show="!einheitNebenWert()"
+                       :style="`font-size:${vorschauPx('unitSize')}px`"
+                       x-text="entwurf.unit"></div>
+              </div>
+            </div>
+          </div>
+
+          <h3>Schwellwerte</h3>
+          <div class="row">
+            <div class="col">
+              <label for="e-wa">Warnung ab (über)</label>
+              <input id="e-wa" type="number" step="any" x-model="entwurf.warnAbove" />
+              <label for="e-aa">Alarm ab (über)</label>
+              <input id="e-aa" type="number" step="any" x-model="entwurf.alarmAbove" />
+            </div>
+            <div class="col">
+              <label for="e-wb">Warnung ab (unter)</label>
+              <input id="e-wb" type="number" step="any" x-model="entwurf.warnBelow" />
+              <label for="e-ab">Alarm ab (unter)</label>
+              <input id="e-ab" type="number" step="any" x-model="entwurf.alarmBelow" />
+            </div>
+          </div>
+
+          <hr />
+          <div class="action-row">
+            <button class="btn" @click="speichern()">Speichern</button>
+            <button class="btn danger" @click="loeschen(entwurf.index)">Löschen</button>
+            <button class="btn ghost" @click="abbrechen()">Abbrechen</button>
+          </div>
+        </div>
+      </section>
+
+      <footer id="footer-placeholder"></footer>
+    </main>
+  </body>
+</html>

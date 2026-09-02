@@ -1,0 +1,168 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Passwortschutz</title>
+    <link rel="stylesheet" href="./css/style.css" />
+    <script src="./js/alpinejs.min.js" defer></script>
+    <script src="./js/utils.js"></script>
+    <script src="./js/themeSwitcher.js"></script>
+    <script src="./js/anmeldungHandler.js"></script>
+    <script src="./js/main.js"></script>
+  </head>
+  <body>
+    <main class="container">
+      <header id="header-placeholder"></header>
+
+      <section x-data="anmeldungHandler()" x-init="init()">
+        <h2>Passwortschutz</h2>
+
+        <p>
+          Der Passwortschutz ist <strong>freiwillig</strong>: Ohne Passwort ist das
+          Display frei bedienbar. Wer eines festlegt, muss sich danach hier anmelden
+          — der Browser merkt sich die Anmeldung.
+        </p>
+
+        <!-- Zustand: Schutz AUS -->
+        <template x-if="geprueft && !schutzAktiv">
+          <div>
+            <p>
+              <strong>Derzeit ist kein Passwort gesetzt</strong> — alle Seiten
+              funktionieren ohne Anmeldung.
+            </p>
+
+            <h3>Passwort festlegen (Schutz einschalten)</h3>
+            <label for="neues-passwort">Passwort</label>
+            <div class="password-row">
+              <input
+                id="neues-passwort"
+                x-model="neuesPasswort"
+                name="neues-passwort"
+                :type="zeigeNeues ? 'text' : 'password'"
+                autocomplete="new-password"
+                placeholder="Passwort eingeben"
+                @keydown.enter="passwortSetzen()"
+              />
+              <button
+                type="button"
+                @click="zeigeNeues = !zeigeNeues"
+                aria-label="Passwort anzeigen oder verbergen"
+                class="eye-btn"
+              >
+                <svg x-show="!zeigeNeues" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M2.5 12c1.8-4 5.5-7 9.5-7 4 0 7.7 3 9.5 7-1.8 4-5.5 7-9.5 7-4 0-7.7-3-9.5-7z" />
+                  <path d="M3 3l18 18" />
+                </svg>
+                <svg x-show="zeigeNeues" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12z"></path>
+                  <circle cx="12" cy="12" r="3"></circle>
+                </svg>
+              </button>
+            </div>
+            <div class="action-row">
+              <button type="button" @click="passwortSetzen()" :disabled="laeuft">
+                Schutz einschalten
+              </button>
+            </div>
+            <p x-text="aenderMeldung"></p>
+          </div>
+        </template>
+
+        <!-- Zustand: Schutz AN -->
+        <template x-if="geprueft && schutzAktiv">
+          <div>
+            <h3>Anmelden</h3>
+            <label for="passwort">Passwort</label>
+            <div class="password-row">
+              <input
+                id="passwort"
+                x-model="passwort"
+                name="passwort"
+                :type="zeigePasswort ? 'text' : 'password'"
+                autocomplete="current-password"
+                placeholder="Passwort eingeben"
+                @keydown.enter="anmelden()"
+              />
+              <button
+                type="button"
+                @click="zeigePasswort = !zeigePasswort"
+                aria-label="Passwort anzeigen oder verbergen"
+                class="eye-btn"
+              >
+                <svg x-show="!zeigePasswort" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M2.5 12c1.8-4 5.5-7 9.5-7 4 0 7.7 3 9.5 7-1.8 4-5.5 7-9.5 7-4 0-7.7-3-9.5-7z" />
+                  <path d="M3 3l18 18" />
+                </svg>
+                <svg x-show="zeigePasswort" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12z"></path>
+                  <circle cx="12" cy="12" r="3"></circle>
+                </svg>
+              </button>
+            </div>
+            <div class="action-row">
+              <button type="button" @click="anmelden()" :disabled="laeuft">
+                Anmelden
+              </button>
+              <button type="button" @click="abmelden()" :disabled="laeuft">
+                Abmelden
+              </button>
+            </div>
+            <p x-text="meldung"></p>
+
+            <template x-if="angemeldet">
+              <div>
+                <h3>Passwort ändern</h3>
+                <label for="neues-passwort2">Neues Passwort</label>
+                <div class="password-row">
+                  <input
+                    id="neues-passwort2"
+                    x-model="neuesPasswort"
+                    name="neues-passwort2"
+                    :type="zeigeNeues ? 'text' : 'password'"
+                    autocomplete="new-password"
+                    placeholder="Neues Passwort eingeben"
+                  />
+                  <button
+                    type="button"
+                    @click="zeigeNeues = !zeigeNeues"
+                    aria-label="Neues Passwort anzeigen oder verbergen"
+                    class="eye-btn"
+                  >
+                    <svg x-show="!zeigeNeues" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <path d="M2.5 12c1.8-4 5.5-7 9.5-7 4 0 7.7 3 9.5 7-1.8 4-5.5 7-9.5 7-4 0-7.7-3-9.5-7z" />
+                      <path d="M3 3l18 18" />
+                    </svg>
+                    <svg x-show="zeigeNeues" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12z"></path>
+                      <circle cx="12" cy="12" r="3"></circle>
+                    </svg>
+                  </button>
+                </div>
+                <div class="action-row">
+                  <button type="button" @click="passwortSetzen()" :disabled="laeuft">
+                    Passwort ändern
+                  </button>
+                  <button type="button" class="danger" @click="schutzAufheben()" :disabled="laeuft">
+                    Schutz aufheben
+                  </button>
+                </div>
+                <p x-text="aenderMeldung"></p>
+              </div>
+            </template>
+
+            <p>
+              <small>
+                Passwort vergessen? Der Rettungszugang des Geräts kann es
+                zurücksetzen — siehe Anleitung.
+              </small>
+            </p>
+          </div>
+        </template>
+      </section>
+
+      <footer id="footer-placeholder"></footer>
+    </main>
+  </body>
+</html>

@@ -1,0 +1,19 @@
+# Build-Ergebnisse
+firmware/.pio/
+# Aus firmware/VERSION erzeugt (scripts/git_version.py), gehoert nicht ins Repo
+firmware/include/project_version.h
+
+# Fertige Abbilder: haengen an GitHub Releases, nicht im Repo
+dist/
+
+# Sicherungen der Geraetekonfiguration -- die enthalten echte Adressen und Objekt-IDs
+backups/
+
+# Material des Ursprungsprojekts, das hier nichts beitraegt und viel Platz kostet:
+# - .github/assets: 39 MB Bilder und ein Showcase-GIF (dort nachzuschlagen)
+# - backup/: serielles Sichern der Werksfirmware inkl. zweier 4-MB-Abzuege fremden
+#   Eigentums. Dieses Projekt flasht nie seriell.
+firmware/.github/
+firmware/backup/
+
+.DS_Store

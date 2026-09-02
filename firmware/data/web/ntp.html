@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Uhrzeit</title>
+    <link rel="stylesheet" href="./css/style.css" />
+    <script src="./js/alpinejs.min.js" defer></script>
+    <script src="./js/utils.js"></script>
+    <script src="./js/themeSwitcher.js"></script>
+    <script src="./js/ntpHandler.js"></script>
+    <script src="./js/main.js"></script>
+  </head>
+  <body>
+    <main class="container">
+      <header id="header-placeholder"></header>
+
+      <section x-data="ntpHandler()" x-init="init()">
+        <h2>Uhrzeit (Zeitabgleich)</h2>
+
+        <p>
+          <strong>Status:</strong>
+          <span x-text="lastStatus"></span>
+        </p>
+
+        <p>
+          <strong>Zuletzt abgeglichen:</strong>
+          <span x-text="humanTime(lastSyncTime)"></span>
+        </p>
+
+        <div>
+          <button
+            type="button"
+            class="btn"
+            @click="syncNow()"
+            x-bind:disabled="loading"
+          >
+            Jetzt abgleichen
+          </button>
+          <button type="button" class="btn" @click="fetchStatus()">
+            Status aktualisieren
+          </button>
+        </div>
+
+        <hr />
+
+        <div class="ntp-config">
+          <h3>Zeitserver</h3>
+          <label for="ntp-server">Zeitserver</label>
+          <input
+            id="ntp-server"
+            type="text"
+            x-model="ntpServer"
+            placeholder="pool.ntp.org"
+          />
+          <div style="margin-top: 0.5em">
+            <button type="button" class="btn" @click="saveConfig()">
+              Speichern
+            </button>
+          </div>
+        </div>
+
+        <p>
+          <small
+            x-text="lastOk ? 'Letzter Abgleich erfolgreich' : 'Noch kein erfolgreicher Abgleich'"
+          ></small>
+        </p>
+      </section>
+
+      <footer id="footer-placeholder"></footer>
+    </main>
+  </body>
+</html>
