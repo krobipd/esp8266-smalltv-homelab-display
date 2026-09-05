@@ -39,8 +39,9 @@ jobs:
       # Dateisystem-Abbild, lokal nicht -- die Ausgabe zeigt, ob es der Build selbst ist.
       - name: Build firmware
         run: |
-          ls -la --time-style=full-iso .pio/build/esp12e/ | grep -E "\.bin" || echo "(vorher: kein .bin)"
-          pio run -v 2>&1 | grep -iE "littlefs|remove|delet|unlink|clean|SUCCESS|FAILED" || true
+          sudo chattr +i .pio/build/esp12e/littlefs.bin
+          pio run 2>&1 | grep -vE "^Compiling|^Archiving|^Indexing" || true
+          sudo chattr -i .pio/build/esp12e/littlefs.bin || true
           ls -la --time-style=full-iso .pio/build/esp12e/ | grep -E "\.bin|\.elf" || true
         working-directory: firmware
 
