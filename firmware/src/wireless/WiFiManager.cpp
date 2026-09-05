@@ -22,6 +22,7 @@
 
 #include "wireless/WiFiManager.h"
 #include "display/DisplayManager.h"
+#include "smalltv_util.h"  // elapsed(): wrap-sichere Zeitvergleiche
 
 static constexpr int LOADING_BAR_TEXT_X = 20;
 static constexpr int LOADING_BAR_TEXT_Y = 60;
@@ -38,6 +39,13 @@ static constexpr int MAX_CONNECTION_ATTEMPTS = 20;
  */
 static constexpr uint32_t CONNECTION_DELAY_MS = 500;
 
+/// Abstand der Versuche, aus dem AP-Modus ins Heimnetz zurueckzukehren.
+static constexpr uint32_t RUECKWEG_INTERVALL_MS = 60000;
+/// Dauer eines solchen Versuchs.
+static constexpr uint32_t RUECKWEG_VERSUCH_MS = 15000;
+/// Nachlauf des AP nach einer Einrichtung ueber ihn -- damit die Antwort noch ankommt.
+static constexpr uint32_t AP_NACHLAUF_MS = 10000;
+
 /**
  * @brief WifiManager constructor
  *
@@ -47,16 +55,23 @@ static constexpr uint32_t CONNECTION_DELAY_MS = 500;
  * @param apPass The password for the WiFi access point mode
  */
 WiFiManager::WiFiManager(const char* staSsid, const char* staPass, const char* apSsid, const char* apPass)
-    : _staSsid(staSsid), _staPass(staPass), _apSsid(apSsid), _apPass(apPass) {}
+    : _staSsid(staSsid != nullptr ? staSsid : ""),
+      _staPass(staPass != nullptr ? staPass : ""),
+      _apSsid(apSsid),
+      _apPass(apPass) {}
 
 auto WiFiManager::begin() -> void {
-    if (!startStationMode()) {
+    // Die Zugangsdaten liegen im SecureStorage; der SDK-eigene Flash-Speicher soll sie
+    // nicht bei jedem WiFi.begin() noch einmal schreiben (Flash-Verschleiss).
+    WiFi.persistent(false);
+    WiFi.setAutoReconnect(true);
+    if (_staSsid.empty() || !startStationMode()) {
         startAccessPointMode();
     }
 
     Logger::info("Wifi active", "WiFiManager");
     Logger::info(String("Mode : " + String(_apMode ? "AP" : "STA")).c_str(), "WiFiManager");
-    Logger::info(String("SSID : " + String(_apMode ? _apSsid : _staSsid)).c_str(), "WiFiManager");
+    Logger::info(String("SSID : " + String(_apMode ? _apSsid : _staSsid.c_str())).c_str(), "WiFiManager");
     Logger::info(String("IP   : " + getIP().toString()).c_str(), "WiFiManager");
 }
 
@@ -67,7 +82,7 @@ auto WiFiManager::begin() -> void {
  */
 auto WiFiManager::startStationMode() -> bool {
     WiFi.mode(WIFI_STA);
-    WiFi.begin(_staSsid, _staPass);
+    WiFi.begin(_staSsid.c_str(), _staPass.c_str());
     int attempts = 0;
 
     Logger::info("Connecting to WiFi...", "WiFiManager");
@@ -114,7 +129,9 @@ auto WiFiManager::connectToNetwork(const char* ssid, const char* pass, uint32_t 
                                     LCD_BLACK, true);
     DisplayManager::drawLoadingBar(static_cast<float>(step) / static_cast<float>(total_steps), LOADING_BAR_Y);
 
-    WiFi.mode(WIFI_STA);
+    // Im AP-Modus laeuft der Versuch NEBEN dem AP (AP_STA): Wer gerade ueber das
+    // Einrichtungsnetz verbunden ist, soll die Antwort noch bekommen.
+    WiFi.mode(_apMode ? WIFI_AP_STA : WIFI_STA);
     WiFi.begin(ssid, pass);
 
     uint32_t start = millis();
@@ -127,6 +144,14 @@ auto WiFiManager::connectToNetwork(const char* ssid, const char* pass, uint32_t 
     step++;
 
     if (WiFi.status() == WL_CONNECTED) {
+        _staSsid = (ssid != nullptr) ? ssid : "";
+        _staPass = (pass != nullptr) ? pass : "";
+        _rueckwegLaeuft = false;
+        if (_apMode) {
+            // Der AP bleibt noch AP_NACHLAUF_MS an, damit die Antwort im Einrichtungsnetz
+            // ankommt; loop() schaltet ihn dann ab.
+            _apNachlaufSeitMs = millis();
+        }
         _apMode = false;
 
         Logger::info(String("Connected: " + WiFi.localIP().toString()).c_str(), "WiFiManager");
@@ -146,7 +171,14 @@ auto WiFiManager::connectToNetwork(const char* ssid, const char* pass, uint32_t 
 
     DisplayManager::drawLoadingBar(1.0F, LOADING_BAR_Y);
 
-    startAccessPointMode();
+    if (!_apMode && !_staSsid.empty()) {
+        // Das Geraet hing im Heimnetz: dorthin zurueck statt in den AP. Ein Tippfehler
+        // im Passwort darf es nicht bis zum Neustart vom Netz nehmen.
+        WiFi.mode(WIFI_STA);
+        WiFi.begin(_staSsid.c_str(), _staPass.c_str());
+    } else {
+        startAccessPointMode();
+    }
 
     return false;
 }
@@ -165,6 +197,8 @@ auto WiFiManager::startAccessPointMode() -> bool {
     WiFi.softAP(_apSsid, _apPass);
 
     _apMode = true;
+    _rueckwegLaeuft = false;
+    _rueckwegZuletztMs = millis();  // erster Rueckweg-Versuch nach RUECKWEG_INTERVALL_MS
 
     return true;
 }
@@ -172,3 +206,48 @@ auto WiFiManager::startAccessPointMode() -> bool {
 auto WiFiManager::isApMode() const -> bool { return _apMode; }
 
 auto WiFiManager::getIP() const -> IPAddress { return _apMode ? WiFi.softAPIP() : WiFi.localIP(); }
+
+/**
+ * @brief Rueckweg aus dem AP-Modus und Nachlauf des AP nach einer Einrichtung.
+ *
+ * Bis v0.2.7 war "der AP laeuft nur, solange kein bekanntes WLAN erreichbar ist" nicht
+ * umgesetzt: Einmal im AP-Modus blieb das Geraet bis zum Neustart dort -- nach einem
+ * Stromausfall mit langsam bootendem Router also fuer immer.
+ */
+auto WiFiManager::loop() -> void {
+    // Nachlauf nach einer Einrichtung ueber den AP: Antwort ist raus, AP kann weg.
+    if (_apNachlaufSeitMs != 0 && elapsed(millis(), _apNachlaufSeitMs, AP_NACHLAUF_MS)) {
+        _apNachlaufSeitMs = 0;
+        WiFi.mode(WIFI_STA);
+        Logger::info("Einrichtung abgeschlossen, AP aus", "WiFiManager");
+        return;
+    }
+    if (!_apMode || _staSsid.empty()) {
+        return;
+    }
+    if (!_rueckwegLaeuft) {
+        if (!elapsed(millis(), _rueckwegZuletztMs, RUECKWEG_INTERVALL_MS)) {
+            return;
+        }
+        // Der AP bleibt an, die Station versucht es daneben -- wer gerade im
+        // Einrichtungsnetz haengt, fliegt nicht mitten im Versuch raus.
+        WiFi.mode(WIFI_AP_STA);
+        WiFi.begin(_staSsid.c_str(), _staPass.c_str());
+        _rueckwegSeitMs = millis();
+        _rueckwegZuletztMs = _rueckwegSeitMs;
+        _rueckwegLaeuft = true;
+        Logger::info("AP-Modus: versuche das Heimnetz", "WiFiManager");
+        return;
+    }
+    if (WiFi.status() == WL_CONNECTED) {
+        WiFi.mode(WIFI_STA);
+        _apMode = false;
+        _rueckwegLaeuft = false;
+        Logger::info(String("Heimnetz wieder da: " + WiFi.localIP().toString()).c_str(), "WiFiManager");
+        return;
+    }
+    if (elapsed(millis(), _rueckwegSeitMs, RUECKWEG_VERSUCH_MS)) {
+        WiFi.mode(WIFI_AP);  // Versuch vorbei, zurueck auf reinen AP
+        _rueckwegLaeuft = false;
+    }
+}

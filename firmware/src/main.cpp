@@ -242,6 +242,10 @@ void loop() {
         webserver->handleClient();
     }
 
+    if (wifiManager != nullptr) {
+        wifiManager->loop();
+    }
+
     if (ntpClient != nullptr) {
         ntpClient->loop();
     }

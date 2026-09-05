@@ -23,6 +23,7 @@
 #include <ESP8266WiFi.h>
 #include <Arduino.h>
 #include <ArduinoJson.h>
+#include <string>
 
 class WiFiManager {
    public:
@@ -37,12 +38,24 @@ class WiFiManager {
     static bool isConnected();
     static String getConnectedSSID();
 
+    /// In jeden Schleifendurchlauf einhaengen. Im AP-Modus wird alle 60 s versucht, das
+    /// gespeicherte Heimnetz zu erreichen; gelingt es, geht der AP wieder aus. Nach einer
+    /// Einrichtung ueber den AP bleibt dieser noch 10 s an, damit die Antwort ankommt.
+    void loop();
+
    private:
-    const char* _staSsid;
-    const char* _staPass;
+    // Kopien statt Zeiger: Die Zeiger zeigten in std::string-Member des ConfigManagers,
+    // die jede Aenderung der Zugangsdaten neu belegt -- ein haengender Zeiger, sobald
+    // hier zur Laufzeit gelesen wird (genau das tut loop()).
+    std::string _staSsid;
+    std::string _staPass;
     const char* _apSsid;
     const char* _apPass;
     bool _apMode = false;
+    unsigned long _rueckwegSeitMs = 0;     // Start des laufenden Rueckweg-Versuchs
+    unsigned long _rueckwegZuletztMs = 0;  // Start des letzten Versuchs (Abstand)
+    bool _rueckwegLaeuft = false;
+    unsigned long _apNachlaufSeitMs = 0;   // 0 = kein Abschalten des AP geplant
 };
 
 #endif  // WIFI_MANAGER_H
