@@ -87,6 +87,19 @@ Startet das Gerät, findet aber kein brauchbares Dateisystem, schaltet die Firmw
 `/legacyupdate` frei — dort lässt sich das Dateisystem erneut hochladen. Bleibt das Gerät
 ganz stumm, greift der Rettungsmodus der Basis-Firmware nach mehreren gescheiterten Starts.
 
+## Nach dem Update prüfen
+
+```sh
+python3 tools/abnahme.py <geräte-adresse> --messen --zeit --drehung --werte
+```
+
+Prüft über die Schnittstelle, was sich ohne Hand am Gerät prüfen lässt: Antwortzeiten
+(kein Aussetzer über 500 ms), Zeitabgleich mit falschem und richtigem Server, Drehung hin
+und zurück, eingerichtete Werte. `--speichern stand.json` vor einem Dateisystem-Update und
+`--vorher stand.json` danach belegen, dass nichts verloren ging. `--wlan` (ab v0.3.0) und
+`--ota <firmware.bin>` (ab v0.3.2) sind versionsgesperrt; das Skript verweigert sie sonst.
+Bei aktivem Passwortschutz `--passwort` mitgeben.
+
 ## Häufige Stolpersteine
 
 | Symptom | Ursache | Lösung |
