@@ -31,18 +31,12 @@ jobs:
       - name: Install PlatformIO
         run: pip install platformio==6.1.19
 
-      - name: Build filesystem image
-        run: pio run -t buildfs && ls -la --time-style=full-iso .pio/build/esp12e/ | grep -E "\.bin|\.elf" || true
+      - name: Build firmware
+        run: pio run
         working-directory: firmware
 
-      # Diagnose (05.09./06.09.2026): In der CI verschwindet nach diesem Schritt das
-      # Dateisystem-Abbild, lokal nicht -- die Ausgabe zeigt, ob es der Build selbst ist.
-      - name: Build firmware
-        run: |
-          sudo chattr +i .pio/build/esp12e/littlefs.bin
-          pio run 2>&1 | grep -vE "^Compiling|^Archiving|^Indexing" || true
-          sudo chattr -i .pio/build/esp12e/littlefs.bin || true
-          ls -la --time-style=full-iso .pio/build/esp12e/ | grep -E "\.bin|\.elf" || true
+      - name: Build filesystem image
+        run: pio run -t buildfs
         working-directory: firmware
 
       # Die Tests der Update-Erkennung laufen gegen die WIRKLICH gebauten Abbilder --

@@ -32,20 +32,10 @@ UI_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "firmwar
 
 # Firmware-Version wie auf dem Geraet -- sie steckt in der Cache-Kennung jeder Datei
 # (Webserver::baueEtag). Ohne dieselbe Kennung koennte der Mock einen Cache-Fehler
-# verbergen, den das Geraet zeigt.
+# verbergen, den das Geraet zeigt. Quelle ist firmware/VERSION; genau daraus macht das
+# Pre-Build-Skript das Makro PROJECT_VER der Firmware.
 def _fw_version():
     basis = os.path.dirname(os.path.abspath(__file__))
-    # Zuerst die generierte Kopfdatei: genau diese Zeichenkette steckt in der gebauten
-    # Firmware (PROJECT_VER_STR). Die VERSION-Datei ist nur die Quelle dafuer und kann
-    # ihr voraus sein, wenn seitdem nicht gebaut wurde.
-    kopf = os.path.join(basis, "..", "firmware", "include", "project_version.h")
-    try:
-        with open(kopf, encoding="utf-8") as f:
-            treffer = re.search(r'PROJECT_VER_STR\[\]\s*=\s*"([^"]+)"', f.read())
-        if treffer:
-            return treffer.group(1)
-    except OSError:
-        pass
     try:
         with open(os.path.join(basis, "..", "firmware", "VERSION"), encoding="utf-8") as f:
             return f.read().strip() or "unknown"

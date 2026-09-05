@@ -1,7 +1,5 @@
 # Build-Ergebnisse
 firmware/.pio/
-# Aus firmware/VERSION erzeugt (scripts/git_version.py), gehoert nicht ins Repo
-firmware/include/project_version.h
 
 # Fertige Abbilder: haengen an GitHub Releases, nicht im Repo
 dist/
