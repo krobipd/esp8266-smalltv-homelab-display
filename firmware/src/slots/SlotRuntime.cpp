@@ -37,16 +37,16 @@ bool g_hellSchalter = true;
 uint32_t g_hellLetzterVersuchMs = 0;
 uint8_t g_hellFehlversuche = 0;
 
-// ACHTUNG: Das Zeitlimit des HTTP-Clients gilt je Phase (Verbindungsaufbau, Kopfdaten,
-// Datenstrom) -- NICHT fuer den gesamten Abruf. Mit 5000 ms konnte ein einzelner Versuch
-// daher bis zu 20 Sekunden dauern und die Anzeige samt Weboberflaeche so lange anhalten.
-// Knappere Werte begrenzen den schlimmsten Fall auf rund 8 Sekunden (das Budget unten
-// prueft nur ZWISCHEN den Leseschritten; ein einzelnes readBytes kann es um bis zu ein
-// weiteres Phasen-Timeout ueberziehen). Die eigentliche Entschaerfung ist der Rueckzug
-// bei wiederholtem Fehlschlag (abrufIntervallMs).
+// Das Zeitlimit des HTTP-Clients gilt je Phase (Verbindungsaufbau, Kopfdaten, Datenstrom),
+// nicht fuer den gesamten Abruf; 2000 ms begrenzen den schlimmsten Fall auf rund 6 Sekunden.
+// Die eigentliche Entschaerfung bei toten Zielen ist der Rueckzug (abrufIntervallMs).
+//
+// Der Antwortkoerper wird ueber writeToStream() der Bibliothek gelesen: Sie kennt
+// Content-Length und chunked und weiss deshalb, wann die Antwort zu Ende ist. Frueher
+// wurde am Socket vorbei mit readBytes() gelesen -- das wartete nach dem letzten Byte einer
+// kurzen Antwort das VOLLE Zeitlimit ab: 2 s je Abruf, am Geraet nachgemessen (05.09.2026),
+// in denen weder Webserver noch Anzeige liefen.
 const uint32_t ANTWORT_TIMEOUT_MS = 2000;
-/// Gesamtbudget fuer das Einlesen des Antwortkoerpers.
-const uint32_t KOERPER_BUDGET_MS = 2000;
 
 // KOERPER_MAX (Groesse des eingelesenen Antwortkoerpers) liegt in SlotRuntime.h --
 // der Testabruf (SlotApi) nutzt dieselbe Grenze. Bewusst begrenzt: Der Heap fasst
@@ -58,6 +58,42 @@ const uint32_t KOERPER_BUDGET_MS = 2000;
 // nie zwei Abrufe gleichzeitig unterwegs. Drei eigene statische Puffer kosteten
 // dauerhaft ~2,3 KB des knappen RAM fuer exakt denselben Zweck.
 char g_koerper[KOERPER_MAX];
+
+/// Nimmt den Antwortkoerper entgegen und behaelt die ersten groesse-1 Bytes, immer
+/// nullterminiert. Alles darueber hinaus wird angenommen und verworfen: writeToStream()
+/// braeche sonst mit einem Schreibfehler ab, obwohl der Anfang laengst da ist -- und
+/// mehr als KOERPER_MAX behalten wir ohnehin nicht (Heap).
+class BegrenzterPuffer : public Stream {
+   public:
+    BegrenzterPuffer(char* ziel, size_t groesse) : _ziel(ziel), _groesse(groesse) {
+        if (_groesse > 0) {
+            _ziel[0] = 0;
+        }
+    }
+    size_t write(uint8_t b) override { return write(&b, 1); }
+    size_t write(const uint8_t* daten, size_t n) override {
+        const size_t frei = (_groesse > 0) ? (_groesse - 1 - _laenge) : 0;
+        const size_t kopie = (n < frei) ? n : frei;
+        if (kopie > 0) {
+            memcpy(_ziel + _laenge, daten, kopie);
+            _laenge += kopie;
+            _ziel[_laenge] = 0;
+        }
+        return n;
+    }
+    // Der Sendepfad des Cores (StreamSend.cpp) fragt das Ziel nach freiem Platz und
+    // schreibt nur so viel; bei 0 wartet er bis zum Zeitlimit. Wir nehmen immer alles.
+    int availableForWrite() override { return 4096; }
+    int available() override { return 0; }
+    int read() override { return -1; }
+    int peek() override { return -1; }
+    size_t laenge() const { return _laenge; }
+
+   private:
+    char* _ziel;
+    size_t _groesse;
+    size_t _laenge = 0;
+};
 
 /**
  * @brief Holt eine URL und legt den Antwortkoerper in einem Puffer ab.
@@ -79,6 +115,11 @@ auto abrufen(const char* url, int& httpStatus, char* koerper, size_t koerperSize
     // Der ESP8266-Client kennt nur EIN gemeinsames Zeitlimit, das je Phase gilt.
     http.setTimeout((uint16_t)ANTWORT_TIMEOUT_MS);
     http.setFollowRedirects(HTTPC_DISABLE_FOLLOW_REDIRECTS);
+    // Verbindung nach der Antwort schliessen lassen. Vorgabe der Bibliothek ist
+    // keep-alive; dann haelt der Server die Verbindung offen, und jedes Warten auf
+    // "mehr Daten" laeuft ins volle Zeitlimit. Wiederverwendung lohnt hier nicht:
+    // eine offene Verbindung je Slot kostet Heap, den dieser Chip nicht hat.
+    http.setReuse(false);
 
     if (!http.begin(client, url)) {
         setErr(fehler, fehlerSize, "Adresse nicht verwendbar");
@@ -98,34 +139,18 @@ auto abrufen(const char* url, int& httpStatus, char* koerper, size_t koerperSize
         return false;
     }
 
-    // Direkt aus dem Datenstrom in den Zielpuffer lesen. http.getString() wuerde die
+    // In den begrenzten Zielpuffer schreiben lassen. http.getString() wuerde die
     // gesamte Antwort am Stueck im Heap anlegen -- bei einer versehentlich riesigen
     // Antwort waere das ein Vielfaches dessen, was wir ueberhaupt behalten.
-    WiFiClient* strom = http.getStreamPtr();
-    size_t gelesen = 0;
-    if (strom != nullptr) {
-        const uint32_t start = millis();
-        while (gelesen < koerperSize - 1 && !elapsed(millis(), start, KOERPER_BUDGET_MS)) {
-            const int verfuegbar = strom->available();
-            if (verfuegbar <= 0) {
-                if (!strom->connected()) {
-                    break;
-                }
-                delay(1);  // gibt dem Netz-Stack Luft, statt hart zu drehen
-                continue;
-            }
-            const int gelesenJetzt =
-                strom->readBytes(koerper + gelesen, koerperSize - 1 - gelesen);
-            if (gelesenJetzt <= 0) {
-                break;
-            }
-            gelesen += (size_t)gelesenJetzt;
-        }
-    }
-    koerper[gelesen] = 0;
+    BegrenzterPuffer puffer(koerper, koerperSize);
+    const int ergebnis = http.writeToStream(&puffer);
     http.end();
 
-    if (gelesen == 0) {
+    if (ergebnis < 0) {
+        setErr(fehler, fehlerSize, "Antwort unvollstaendig");
+        return false;
+    }
+    if (puffer.laenge() == 0) {
         setErr(fehler, fehlerSize, "leere Antwort");
         return false;
     }
