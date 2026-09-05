@@ -187,24 +187,25 @@ def probe_wlan(g, version):
         return
     _, _, vorher = g.hole("/api/v1/wifi/status")
     ssid = vorher.get("ssid", "")
+    start = time.time()  # ab hier zaehlt die Zeit -- der Versuch selbst blockiert das Geraet bis 15 s
     try:
         g.sende("/api/v1/wifi/connect", {"ssid": "abnahme-gibt-es-nicht", "password": "x"}, timeout=25)
     except Exception:  # noqa: BLE001 -- die Antwort darf ausbleiben, das Netz ist gerade weg
         pass
-    frist = time.time() + 90
+    frist = start + 120
     zurueck = None
     while time.time() < frist:
         try:
             _, _, st = g.hole("/api/v1/wifi/status", timeout=5)
             if st.get("connected") and st.get("ssid") == ssid:
-                zurueck = 90 - (frist - time.time())
+                zurueck = time.time() - start
                 break
         except Exception:  # noqa: BLE001
             pass
         time.sleep(3)
     melde(zurueck is not None, "WLAN: nach falscher SSID %s" % (
         "in %.0f s unter der alten Adresse zurueck (%s)" % (zurueck, ssid) if zurueck is not None
-        else "nach 90 s nicht zurueck -- Geraet vermutlich im AP-Modus, Stecker ziehen"))
+        else "nach 120 s nicht zurueck -- Geraet vermutlich im AP-Modus, Stecker ziehen"))
 
 
 def probe_ota(g, version, datei):
