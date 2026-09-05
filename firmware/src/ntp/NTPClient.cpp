@@ -21,6 +21,7 @@
 #include <ctime>
 #include <array>
 #include <lwip/apps/sntp.h>
+#include <coredecls.h>  // settimeofday_cb
 #include <Logger.h>
 #include <wireless/WiFiManager.h>
 #include "config/ConfigManager.h"
@@ -29,6 +30,11 @@
 extern ConfigManager configManager;
 
 static constexpr const char* TAG = "NTPClient";
+
+/// Wird vom Core gesetzt, sobald SNTP die Uhr tatsaechlich gestellt hat (settimeofday).
+/// Das ist das einzige belastbare Erfolgskriterium -- "die Uhr steht auf einem
+/// plausiblen Datum" war nach dem ersten Abgleich immer wahr.
+static volatile bool g_zeitGesetzt = false;
 
 /**
  * @brief Default NTP server
@@ -97,6 +103,7 @@ void NTPClient::begin(uint32_t syncIntervalSeconds, uint8_t maxRetries) {
 
     // Zeitzone EINMAL setzen -- time() bleibt UTC, localtime() liefert Ortszeit.
     setTZ(TZ_LOKAL);
+    settimeofday_cb([]() { g_zeitGesetzt = true; });
 
     Logger::info("NTP client initialized", TAG);
 }
@@ -105,6 +112,7 @@ void NTPClient::begin(uint32_t syncIntervalSeconds, uint8_t maxRetries) {
  * @brief Startet einen Sync-Versuch: SNTP anstossen, nicht warten.
  */
 void NTPClient::starteSync() {
+    g_zeitGesetzt = false;
     // configTime(tz, ...) statt configTime(0, 0, ...): Die Offset-Fassung wuerde die
     // in begin() gesetzte Zeitzonenregel wieder mit "UTC+0" ueberschreiben.
     const char* srv = configManager.getNtpServer();
@@ -152,7 +160,11 @@ void NTPClient::syncAbschliessen(bool ok) {
  * @brief Prueft einen laufenden Sync. true = Lauf ist beendet (Erfolg oder Fehlschlag).
  */
 auto NTPClient::ergebnisPruefen() -> bool {
-    if (time(nullptr) > REASONABLE_EPOCH) {
+    // Erfolg heisst: SNTP hat die Uhr GESTELLT (settimeofday-Rueckruf) -- nicht "die
+    // Uhr steht auf einem plausiblen Datum". Letzteres war nach dem ersten Abgleich
+    // immer wahr; jeder weitere war ein Scheinerfolg, und sntp_stop() wuergte die
+    // Anfrage ab, bevor eine Antwort kam: Die Uhr wurde nach dem Boot nie nachgestellt.
+    if (g_zeitGesetzt && time(nullptr) > REASONABLE_EPOCH) {
         syncAbschliessen(true);
         return true;
     }
