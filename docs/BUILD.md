@@ -75,9 +75,10 @@ Seite **Update** auf dem Gerät. Sie erkennt selbst, welche Sorte Abbild man aus
 und zeigt es an („Erkannt: Firmware" / „Erkannt: Oberfläche (Dateisystem)"). Das Gerät prüft
 es unabhängig davon noch einmal und lehnt die falsche Sorte ab, bevor es schreibt.
 
-> ⚠️ **Vor einem Dateisystem-Update sichern.** Es löscht `/slots.json` und damit alle
-> eingerichteten Werte. Auf der Update-Seite gibt es *Sichern* und *Wiederherstellen*;
-> WLAN-Zugang und Passwort überleben ohnehin (die liegen im EEPROM).
+> ⚠️ **Firmware zuerst, dann Dateisystem.** Seit Firmware v0.3.0 schreibt das Gerät seine
+> Einrichtung nach einem Dateisystem-Update selbst ins neue Dateisystem zurück. Läuft noch
+> eine ältere Firmware, löscht das Dateisystem-Update `/slots.json` — dann vorher *Sichern*
+> (Update-Seite). WLAN-Zugang und Passwort überleben ohnehin (die liegen im EEPROM).
 
 > ⚠️ **Während des Schreibens nicht vom Strom trennen.** Es gibt kein Bootloader-Rollback.
 

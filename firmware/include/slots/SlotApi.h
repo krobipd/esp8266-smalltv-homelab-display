@@ -40,6 +40,10 @@ class SlotApi {
 
     /// Registriert alle Routen am Webserver.
     static void registerRoutes(Webserver* webserver);
+
+    /// Schreibt die Konfiguration aus dem RAM in das Dateisystem -- nach einem
+    /// Dateisystem-Update, dessen Abbild keine /slots.json mitbringt. true = geschrieben.
+    static auto konfigurationSichern() -> bool;
 };
 
 void handleSlotsGet(Webserver* webserver);

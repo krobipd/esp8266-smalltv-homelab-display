@@ -94,6 +94,19 @@ void SlotApi::setLadeWarnung(const char* text) {
     snprintf(g_ladeWarnung, sizeof(g_ladeWarnung), "%s", text == nullptr ? "" : text);
 }
 
+auto SlotApi::konfigurationSichern() -> bool {
+    if (g_cfg == nullptr) {
+        return false;
+    }
+    char fehler[96];
+    if (!SlotStore::save(*g_cfg, fehler, sizeof(fehler))) {
+        Logger::error(fehler, "Slots");
+        return false;
+    }
+    g_ladeWarnung[0] = 0;
+    return true;
+}
+
 // @openapi {get} /slots version=v1 group=Slots summary="Read slot configuration" requiresAuth=true
 void handleSlotsGet(Webserver* webserver) {
     if (!requireBearerToken(webserver)) {

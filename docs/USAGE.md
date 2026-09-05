@@ -98,8 +98,10 @@ ganze Schleife bremst.
 ## Sichern und Wiederherstellen
 
 Seite **Update**: *Sichern* lädt die komplette Einrichtung als Datei herunter,
-*Wiederherstellen* spielt sie zurück. **Vor jedem Dateisystem-Update benutzen** — das
-Update löscht alle eingerichteten Werte. WLAN und Passwort überleben ohnehin.
+*Wiederherstellen* spielt sie zurück. Seit Firmware v0.3.0 bleibt die Einrichtung bei einem
+Dateisystem-Update von selbst erhalten — die Firmware schreibt sie ins neue Dateisystem
+zurück. Läuft noch eine ältere Firmware, **vor dem Dateisystem-Update sichern**. WLAN und
+Passwort überleben ohnehin.
 
 ## Passwortschutz
 

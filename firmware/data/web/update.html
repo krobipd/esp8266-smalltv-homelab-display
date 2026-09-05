@@ -20,10 +20,11 @@
         <div x-data="sicherungHandler()" style="margin-top: 2em">
           <h2>Einstellungen sichern</h2>
           <p class="small">
-            ⚠️ Ein Update der <strong>Oberfläche</strong> löscht alle eingerichteten Werte —
-            das Abbild ersetzt den gesamten Speicherbereich und bringt selbst keine
-            Konfiguration mit. WLAN-Zugang und Passwort bleiben erhalten.
-            <strong>Vor dem Update hier sichern, danach wieder einspielen.</strong>
+            Seit Firmware v0.3.0 bleibt die Einrichtung bei einem Update der
+            <strong>Oberfläche</strong> erhalten — das Gerät schreibt sie ins neue
+            Dateisystem zurück. Auf älterer Firmware löscht das Update alle eingerichteten
+            Werte: <strong>dann vorher hier sichern, danach wieder einspielen.</strong>
+            WLAN-Zugang und Passwort bleiben immer erhalten.
           </p>
           <button class="btn" x-bind:disabled="laeuft" @click="sichern">
             Sicherung herunterladen

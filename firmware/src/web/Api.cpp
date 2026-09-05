@@ -26,6 +26,7 @@
 #include "abbild_art.h"
 #include "web/Api.h"
 #include "display/DisplayManager.h"
+#include "slots/SlotApi.h"
 
 #include "config/ConfigManager.h"
 #include "wireless/WiFiManager.h"
@@ -49,7 +50,7 @@ static constexpr int OTA_LOADING_Y_OFFSET = 110;
 static void otaHandleStart(HTTPUpload& upload, int mode);
 static void otaHandleWrite(HTTPUpload& upload, int mode);
 static void otaHandleEnd(HTTPUpload& upload, int mode);
-static void otaHandleAborted(HTTPUpload& upload);
+static void otaHandleAborted(HTTPUpload& upload, int mode);
 
 static constexpr int WIFI_CONNECT_TIMEOUT_MS = 15000;
 static constexpr size_t NTP_CONFIG_DOC_SIZE = 512;
@@ -729,7 +730,7 @@ void handleOtaUpload(Webserver* webserver, int mode) {
             otaHandleEnd(upload, mode);
             break;
         case UPLOAD_FILE_ABORTED:
-            otaHandleAborted(upload);
+            otaHandleAborted(upload, mode);
             break;
         default:
             break;
@@ -927,10 +928,21 @@ static void otaHandleStart(HTTPUpload& upload, int mode) {
         bin_mask;
     size_t place = (mode == U_FS) ? fsSize : maxSketchSpace;
 
+    if (mode == U_FS) {
+        // Die Partition wird gleich ueberschrieben: Dateisystem aushaengen, wie es der
+        // Update-Server des Frameworks tut (close_all_fs). Ohne das bliebe ein Mount mit
+        // veralteten Metadaten stehen -- und LittleFS.begin() ist bei gemountetem
+        // Dateisystem ein No-op, das "Neu-Mounten" hinterher faende nie statt.
+        close_all_fs();
+    }
+
     if (!Update.begin(place, mode)) {
         otaError = true;
         otaStatus = Update.getErrorString();
         Logger::error((String("Update.begin failed: ") + otaStatus).c_str(), "API::OTA");
+        if (mode == U_FS) {
+            LittleFS.begin();  // Oberflaeche soll weiterlaufen
+        }
     }
 }
 
@@ -950,6 +962,9 @@ static void otaHandleWrite(HTTPUpload& upload, int mode) {
         const AbbildArt erkannt = erkenneAbbild(upload.buf, upload.currentSize);
         if (erkannt != erwartet) {
             Update.end();
+            if (mode == U_FS) {
+                LittleFS.begin();  // nichts geschrieben, altes Dateisystem wieder einhaengen
+            }
             otaError = true;
             otaStatus = abbildFehlertext(erkannt, erwartet);
             otaInProgress = false;
@@ -965,6 +980,9 @@ static void otaHandleWrite(HTTPUpload& upload, int mode) {
     if (!otaError) {
         if (otaCancelRequested) {
             Update.end();
+            if (mode == U_FS) {
+                LittleFS.begin();  // so weit noch moeglich; sonst hilft der Neustart (Notfallroute)
+            }
             otaError = true;
             otaStatus = "Update abgebrochen";
             otaInProgress = false;
@@ -1005,12 +1023,25 @@ static void otaHandleWrite(HTTPUpload& upload, int mode) {
 static void otaHandleEnd(HTTPUpload& /*upload*/, int mode) {
     if (!otaError) {
         if (Update.end(true)) {
+            otaStatus = String("Update OK (") + String(otaSize) + " Byte)";
             if (mode == U_FS) {
                 Logger::info("OTA FS update complete, mounting file system...", "API::OTA");
-                LittleFS.begin();
+                if (LittleFS.begin()) {
+                    // Das neue Abbild bringt keine Konfiguration mit. Was im RAM steht, ist
+                    // der gueltige Stand -- zurueckschreiben, bevor neu gestartet wird. Damit
+                    // kostet ein Oberflaechen-Update keine eingerichteten Werte mehr.
+                    const bool slotsOk = SlotApi::konfigurationSichern();
+                    const bool cfgOk = configManager.save();
+                    const bool uebernommen = slotsOk && cfgOk;
+                    otaStatus += uebernommen ? ", Einrichtung uebernommen" : ", Einrichtung NICHT uebernommen";
+                    Logger::info(uebernommen ? "Konfiguration ins neue Dateisystem uebernommen"
+                                             : "Konfiguration NICHT uebernommen",
+                                 "API::OTA");
+                } else {
+                    otaStatus += ", neues Dateisystem nicht mountbar";
+                    Logger::error("Neues Dateisystem laesst sich nicht mounten", "API::OTA");
+                }
             }
-
-            otaStatus = String("Update OK (") + String(otaSize) + " Byte)";
             Logger::info(otaStatus.c_str(), "API::OTA");
 
             DisplayManager::drawLoadingBar(1.0F, OTA_LOADING_Y_OFFSET);
@@ -1030,8 +1061,11 @@ static void otaHandleEnd(HTTPUpload& /*upload*/, int mode) {
  *
  * @return void
  */
-static void otaHandleAborted(HTTPUpload& /*upload*/) {
+static void otaHandleAborted(HTTPUpload& /*upload*/, int mode) {
     Update.end();
+    if (mode == U_FS) {
+        LittleFS.begin();  // so weit noch moeglich; sonst hilft der Neustart (Notfallroute)
+    }
     otaError = true;
     otaStatus = "Update abgebrochen";
     otaInProgress = false;

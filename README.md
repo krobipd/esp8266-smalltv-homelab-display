@@ -46,8 +46,9 @@ auszugeben.
 - **Update im Browser** — Firmware und Oberfläche per OTA. Die Seite **erkennt selbst**, was
   für ein Abbild hochgeladen wird, und das **Gerät prüft es noch einmal**, bevor ein Byte in
   den Flash geht.
-- **Sichern & Wiederherstellen** der ganzen Einrichtung als Datei — ein Dateisystem-Update
-  löscht sonst alle Werte.
+- **Sichern & Wiederherstellen** der ganzen Einrichtung als Datei — als Export und
+  Sicherheitsnetz. Seit v0.3.0 bleibt die Einrichtung bei einem Dateisystem-Update von
+  selbst erhalten: Die Firmware schreibt sie ins neue Dateisystem zurück.
 - **Passwortschutz optional** — ab Werk offen, zuschaltbar, leeres Passwort hebt ihn auf.
 
 ## 🔌 Datenquellen
