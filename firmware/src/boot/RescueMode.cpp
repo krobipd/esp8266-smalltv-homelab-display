@@ -24,6 +24,7 @@
 #include <Updater.h>
 
 #include "boot/RescueMode.h"
+#include "abbild_art.h"
 #include "project_version.h"
 #include "config/ConfigManager.h"
 #include "display/DisplayManager.h"
@@ -435,11 +436,30 @@ static void handleRescueOtaUpload() {
         uint32_t maxSize =
             (ESP.getFreeSketchSpace() - OTA_OFFSET) & OTA_MASK;  // NOLINT(readability-static-accessed-through-instance)
         Logger::info("Rescue OTA upload started", "RescueMode");
-        Update.begin(maxSize, U_FLASH);
+        if (!Update.begin(maxSize, U_FLASH)) {
+            Logger::error(Update.getErrorString().c_str(), "RescueMode");
+        }
     } else if (upload.status == UPLOAD_FILE_WRITE) {
-        Update.write(upload.buf, upload.currentSize);
+        if (Update.hasError()) {
+            return;
+        }
+        // Erster Brocken: dieselbe Abbild-Pruefung wie im Normalbetrieb (abbild_art.h).
+        // Der Rettungsweg schreibt nur Firmware; ein Dateisystem-Abbild wird abgewiesen.
+        if (Update.progress() == 0) {
+            const AbbildArt erkannt = erkenneAbbild(upload.buf, upload.currentSize);
+            if (erkannt != ABBILD_FIRMWARE) {
+                Update.end();
+                Logger::error(abbildFehlertext(erkannt, ABBILD_FIRMWARE), "RescueMode");
+                return;
+            }
+        }
+        if (Update.write(upload.buf, upload.currentSize) != upload.currentSize) {
+            Logger::error(Update.getErrorString().c_str(), "RescueMode");
+        }
     } else if (upload.status == UPLOAD_FILE_END) {
-        Update.end(true);
+        if (!Update.end(true)) {
+            Logger::error(Update.getErrorString().c_str(), "RescueMode");
+        }
         Logger::info("Rescue OTA upload finished", "RescueMode");
     }
 }
@@ -465,6 +485,9 @@ static void handleRescueOtaFinished() {
     rescueWebserver->raw().send(HTTP_CODE_OK, "application/json", json);
 
     if (!Update.hasError()) {
+        // Zaehler zuruecksetzen -- sonst zaehlt der naechste Boot weiter (RTC und
+        // persistenter Zaehler stehen >= Schwelle) und landet garantiert wieder hier.
+        RescueMode::markBootStable();
         delay(REBOOT_DELAY_MS);
         ESP.restart();  // NOLINT(readability-static-accessed-through-instance)
     }

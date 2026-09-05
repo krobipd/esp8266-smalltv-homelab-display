@@ -107,8 +107,19 @@ Passwort überleben ohnehin.
 
 Seite **Passwortschutz**. Ab Werk ist die Oberfläche **offen** — im eigenen Netz ist das
 eine Entscheidung des Nutzers, kein Versäumnis. Ein Passwort schaltet den Schutz ein, ein
-leeres Passwort hebt ihn wieder auf. Vergessen? Der Rettungsmodus der Basis-Firmware setzt
-es zurück.
+leeres Passwort hebt ihn wieder auf.
+
+**Passwort vergessen — Rettungsmodus.** Das Gerät dreimal hintereinander jeweils innerhalb der
+ersten 20 Sekunden nach dem Einschalten vom Strom trennen. Beim vierten Start zeigt das Display
+„RESCUE MODE" und öffnet das WLAN `GeekMagic` (Passwort `smalltv123`). Der Rettungsmodus hat
+keine Oberfläche, nur eine Schnittstelle:
+
+```sh
+curl -X POST http://192.168.4.1/api/v1/rescue/token -H 'Content-Type: application/json' -d '{"token":""}'
+curl -X POST http://192.168.4.1/api/v1/rescue/reboot
+```
+
+Der erste Befehl hebt den Schutz auf, der zweite startet normal neu.
 
 ## Weitere Seiten
 
