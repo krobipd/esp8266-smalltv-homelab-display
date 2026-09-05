@@ -45,6 +45,10 @@ class SlotDisplay {
 
     /// Helligkeit sofort neu anwenden (nach einer Aenderung der Einstellungen).
     static void helligkeitAnwenden();
+
+    /// Adresse und Modus fuer die Leerseite ("Kein Wert eingerichtet") -- dort ist die
+    /// Adresse die einzige Information, die jemand braucht. Eine Aenderung zeichnet neu.
+    static void netzInfo(const char* ip, bool apModus);
 };
 
 #endif  // SLOT_DISPLAY_H

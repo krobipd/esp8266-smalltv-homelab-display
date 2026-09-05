@@ -254,6 +254,13 @@ void loop() {
     // sich hoechstens im Sekundenraster aendern, und der Abrufplaner muesste sonst
     // zigtausendmal je Sekunde alle Slots durchgehen, nur um festzustellen,
     // dass nichts faellig ist.
+    // Adresse fuer die Leerseite -- alle 2 s reicht, sie aendert sich praktisch nie.
+    static uint32_t letzteNetzInfo = 0;
+    if (wifiManager != nullptr && elapsed(millis(), letzteNetzInfo, 2000U)) {
+        letzteNetzInfo = millis();
+        SlotDisplay::netzInfo(wifiManager->getIP().toString().c_str(), wifiManager->isApMode());
+    }
+
     static uint32_t letzterSlotTakt = 0;
     if (elapsed(millis(), letzterSlotTakt, 100U)) {
         letzterSlotTakt = millis();

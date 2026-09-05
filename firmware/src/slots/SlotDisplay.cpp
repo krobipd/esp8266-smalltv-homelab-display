@@ -38,6 +38,14 @@ const uint16_t FARBE_RAHMEN = 0x2124;
 uint8_t g_seite = 1;
 uint32_t g_letzterWechselMs = 0;
 bool g_allesNeu = true;
+/// Adresse und Modus fuer die Leerseite (Ersteinrichtung, neue DHCP-Adresse).
+char g_ip[16] = {0};
+bool g_apModus = false;
+/// Das Startbild (Name, Version, Adresse) bleibt nach dem Boot STARTBILD_MS stehen. Vorher
+/// wurde es im ersten Schleifendurchlauf uebermalt -- die Adresse war null Sekunden zu sehen.
+uint32_t g_startbildSeitMs = 0;
+bool g_startbildSteht = false;
+const uint32_t STARTBILD_MS = 10000;
 uint8_t g_gesetzteHelligkeit = 255;  // 255 = noch nie gesetzt
 uint32_t g_letzterHelligkeitsTest = 0;
 
@@ -435,7 +443,11 @@ void zeichneSeite() {
     gfx->fillScreen(FARBE_HG);
 
     if (!seiteHatInhalt(g_seite)) {
-        textMittig(gfx, "Kein Wert eingerichtet", 0, HOEHE / 2 - 4, BREITE, 1, FARBE_LABEL);
+        textMittig(gfx, "Kein Wert eingerichtet", 0, 80, BREITE, 1, FARBE_LABEL);
+        textMittig(gfx, g_ip, 0, 104, BREITE, 2, 0xFFFF);
+        if (g_apModus) {
+            textMittig(gfx, "WLAN GeekMagic", 0, 136, BREITE, 1, FARBE_LABEL);
+        }
         return;
     }
 
@@ -472,8 +484,24 @@ void SlotDisplay::begin(Config* cfg) {
     g_cfg = cfg;
     g_seite = 1;
     g_letzterWechselMs = millis();
+    g_startbildSteht = true;  // Zeit laeuft ab dem ersten update(), nach dem Startbild
+    g_startbildSeitMs = 0;
     helligkeitAnwenden();
     neuZeichnen();
+}
+
+void SlotDisplay::netzInfo(const char* ip, bool apModus) {
+    if (ip == nullptr) {
+        return;
+    }
+    if (strncmp(g_ip, ip, sizeof(g_ip)) == 0 && g_apModus == apModus) {
+        return;
+    }
+    snprintf(g_ip, sizeof(g_ip), "%s", ip);
+    g_apModus = apModus;
+    if (!seiteHatInhalt(g_seite)) {
+        g_allesNeu = true;
+    }
 }
 
 void SlotDisplay::helligkeitAnwenden() {
@@ -514,6 +542,18 @@ void SlotDisplay::naechsteSeite() {
 void SlotDisplay::update() {
     if (g_cfg == nullptr) {
         return;
+    }
+
+    // Das Startbild lesbar lassen (Adresse!). Die Zeit zaehlt ab hier: setup() malt es
+    // als Letztes, der erste Schleifendurchlauf kommt unmittelbar danach.
+    if (g_startbildSteht) {
+        if (g_startbildSeitMs == 0) {
+            g_startbildSeitMs = millis();
+        }
+        if (!elapsed(millis(), g_startbildSeitMs, STARTBILD_MS)) {
+            return;
+        }
+        g_startbildSteht = false;
     }
 
     // Nachtmodus und Schalter aendern sich ohne Ereignis -- also regelmaessig nachsehen.

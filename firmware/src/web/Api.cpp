@@ -27,6 +27,7 @@
 #include "web/Api.h"
 #include "display/DisplayManager.h"
 #include "slots/SlotApi.h"
+#include "slots/SlotDisplay.h"
 
 #include "config/ConfigManager.h"
 #include "wireless/WiFiManager.h"
@@ -673,6 +674,9 @@ void handleDisplayRotationSet(Webserver* webserver) {
     }
 
     DisplayManager::setRotation(newRotation, currentIP);
+    // Die Basis hat das Startbild gemalt -- die Kachelanzeige muss das erfahren, sonst
+    // bleibt es stehen, bis sich zufaellig ein Wert aendert (A2).
+    SlotDisplay::neuZeichnen();
 
     if (!configManager.save()) {
         JsonDocument doc;
@@ -848,6 +852,8 @@ void handleWifiConnect(Webserver* webserver) {
     if (wifiManager != nullptr) {
         connectOk = wifiManager->connectToNetwork(ssid, password, WIFI_CONNECT_TIMEOUT_MS);
     }
+    // "Wifi connecting..." bzw. "Failed to connect!" stehen jetzt auf dem Display (A2).
+    SlotDisplay::neuZeichnen();
 
     JsonDocument resp;
 
@@ -973,6 +979,7 @@ static void otaHandleWrite(HTTPUpload& upload, int mode) {
             DisplayManager::drawTextWrapped(OTA_TEXT_X_OFFSET, OTA_TEXT_Y_OFFSET, "Abgelehnt", 2,
                                             LCD_WHITE, LCD_BLACK, true);
             DisplayManager::drawLoadingBar(0.0F, OTA_LOADING_Y_OFFSET);
+            SlotDisplay::neuZeichnen();  // die Meldung steht in der Oberflaeche (A2)
             return;
         }
     }
@@ -991,6 +998,7 @@ static void otaHandleWrite(HTTPUpload& upload, int mode) {
             DisplayManager::drawTextWrapped(OTA_TEXT_X_OFFSET, OTA_TEXT_Y_OFFSET, "Canceled", 2, LCD_WHITE, LCD_BLACK,
                                             true);
             DisplayManager::drawLoadingBar(0.0F, OTA_LOADING_Y_OFFSET);
+            SlotDisplay::neuZeichnen();  // (A2)
 
             return;
         }
@@ -1073,6 +1081,7 @@ static void otaHandleAborted(HTTPUpload& /*upload*/, int mode) {
 
     DisplayManager::drawTextWrapped(OTA_TEXT_X_OFFSET, OTA_TEXT_Y_OFFSET, "Aborted", 2, LCD_WHITE, LCD_BLACK, true);
     DisplayManager::drawLoadingBar(0.0F, OTA_LOADING_Y_OFFSET);
+    SlotDisplay::neuZeichnen();  // (A2)
 }
 
 /**
