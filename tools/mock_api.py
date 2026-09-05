@@ -454,7 +454,7 @@ class Handler(BaseHTTPRequestHandler):
             # Formate 1:1 aus handleWifiConnect() ({"status": "connected"/"error"}).
             ssid = (self._body().get("ssid") or "").strip()
             if not ssid:
-                return self._json(500, {"status": "error", "message": "WLAN-Name fehlt"})
+                return self._json(400, {"status": "error", "message": "WLAN-Name fehlt"})
             return self._json(200, {"status": "connected", "ssid": ssid, "ip": "127.0.0.1"})
         if p == "/api/v1/ntp/sync":
             global NTP_LETZTER_SYNC

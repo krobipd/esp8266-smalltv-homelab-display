@@ -363,6 +363,8 @@ void handleSlotsSettings(Webserver* webserver) {
         return;
     }
 
+    // Neue Schalter-Adresse, neuer Anlauf -- der Rueckzug der alten gilt nicht weiter.
+    SlotRuntime::hellZuruecksetzen();
     SlotDisplay::helligkeitAnwenden();
     SlotDisplay::neuZeichnen();
     Logger::info("Seiteneinstellungen gespeichert");

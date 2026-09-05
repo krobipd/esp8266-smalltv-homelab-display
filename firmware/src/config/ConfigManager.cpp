@@ -48,7 +48,9 @@ auto ConfigManager::load() -> bool {
 
     File file = LittleFS.open(filename.c_str(), "r");
     if (!file) {
-        Logger::error("Failed to open config file", "ConfigManager");
+        // Kein Fehler: Ein frisch installiertes Geraet hat keine /config.json, das
+        // Dateisystem-Abbild bringt bewusst keine mit. Es gelten die Standardwerte.
+        Logger::info("Keine /config.json -- Standardwerte gelten", "ConfigManager");
         return false;
     }
 
@@ -205,14 +207,20 @@ auto ConfigManager::save() -> bool {
     // Aenderung (Web-API UND Rescue-Reset) nur bis zum naechsten Neustart --
     // danach kam der alte Wert zurueck, waehrend der Browser den neuen kannte:
     // dauerhaft ausgesperrt, und der dokumentierte Rescue-Weg war wirkungslos.
+    bool sicherOk = true;
     if (secure.get("wifi_ssid", "") != this->ssid.c_str()) {
-        secure.put("wifi_ssid", this->getSSID());
+        sicherOk = secure.put("wifi_ssid", this->getSSID()) && sicherOk;
     }
     if (secure.get("wifi_password", "") != this->password.c_str()) {
-        secure.put("wifi_password", this->getPassword());
+        sicherOk = secure.put("wifi_password", this->getPassword()) && sicherOk;
     }
     if (secure.get("api_token", "") != this->api_token.c_str()) {
-        secure.put("api_token", this->getApiToken());
+        sicherOk = secure.put("api_token", this->getApiToken()) && sicherOk;
+    }
+    if (!sicherOk) {
+        // Sonst hiesse es "Passwort gespeichert", obwohl es nur bis zum Neustart gilt.
+        Logger::error("SecureStorage konnte nicht schreiben", "ConfigManager");
+        return false;
     }
 
     JsonDocument doc;

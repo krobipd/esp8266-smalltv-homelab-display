@@ -221,8 +221,8 @@ void setup() {
     DisplayManager::drawStartup(wifiManager->getIP().toString());
 
 
-    // enable watchdog before going to loop()
-    // 2 seconds should be way more than the main loop needs to do stuff
+    // Software-Watchdog des Cores einschalten. Seine Zeit ist fest vorgegeben; das
+    // Argument wird vom Core ignoriert (Esp.cpp: "(void) timeout_ms").
     EspClass::wdtEnable(WDTO_2S);
 }
 

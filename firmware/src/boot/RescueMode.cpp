@@ -368,13 +368,13 @@ static void handleRescueTokenReset() {
         return;
     }
 
-    const char* newToken = ddoc["token"] | "";
-
-    if (strlen(newToken) == 0) {
+    // Leer ist erlaubt und heisst "Schutz aus" -- dieselbe Regel wie im Normalbetrieb
+    // (handleTokenSave). Ein Rettungsweg, der das leere Passwort ablehnt, waere keiner.
+    if (!ddoc["token"].is<const char*>()) {
         JsonDocument doc;
 
         doc["status"] = "error";
-        doc["message"] = "token field is required";
+        doc["message"] = "Passwort-Feld fehlt";
 
         String json;
         serializeJson(doc, json);
@@ -384,13 +384,15 @@ static void handleRescueTokenReset() {
 
         return;
     }
+    const char* newToken = ddoc["token"] | "";
+    const bool schutzAus = (strlen(newToken) == 0);
 
     configManager.setApiToken(newToken);
     configManager.save();
 
     JsonDocument doc;
     doc["status"] = "ok";
-    doc["message"] = "Token reset successfully";
+    doc["message"] = schutzAus ? "Passwortschutz aufgehoben" : "Passwort gesetzt";
 
     String json;
     serializeJson(doc, json);

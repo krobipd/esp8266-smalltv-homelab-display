@@ -86,6 +86,10 @@ class SlotRuntime {
     /// dessen Ursache niemand findet.
     static auto hellSchalterAn() -> bool;
 
+    /// Laufzeitzustand des Helligkeits-Schalters verwerfen -- nach einer geaenderten
+    /// Einstellung, sonst erbt die neue Adresse den Rueckzug der alten (bis 5 min).
+    static void hellZuruecksetzen();
+
     /// Erste Seite mit einem aktiven Alarm, sonst 0.
     static auto alarmSeite() -> uint8_t;
 };

@@ -212,6 +212,12 @@ auto SlotRuntime::hellSchalterAn() -> bool {
     return g_hellSchalter;
 }
 
+void SlotRuntime::hellZuruecksetzen() {
+    g_hellSchalter = true;
+    g_hellLetzterVersuchMs = 0;
+    g_hellFehlversuche = 0;
+}
+
 namespace {
 /// Fragt den Schalt-Datenpunkt ab. Gibt true zurueck, wenn dabei ein Abruf stattfand --
 /// dann ist fuer diesen Durchlauf genug getan.

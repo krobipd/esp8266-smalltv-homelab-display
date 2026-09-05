@@ -820,7 +820,7 @@ void handleWifiConnect(Webserver* webserver) {
         serializeJson(resp, jsonOut);
 
         setCorsHeaders(webserver);
-        webserver->raw().send(HTTP_CODE_INTERNAL_ERROR, "application/json", jsonOut);
+        webserver->raw().send(HTTP_CODE_BAD_REQUEST, "application/json", jsonOut);
 
         return;
     }
@@ -839,7 +839,7 @@ void handleWifiConnect(Webserver* webserver) {
         serializeJson(resp, jsonOut);
 
         setCorsHeaders(webserver);
-        webserver->raw().send(HTTP_CODE_INTERNAL_ERROR, "application/json", jsonOut);
+        webserver->raw().send(HTTP_CODE_BAD_REQUEST, "application/json", jsonOut);
 
         return;
     }
