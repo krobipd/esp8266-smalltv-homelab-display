@@ -26,7 +26,6 @@ function sicherungHandler() {
       this.meldung = "";
       try {
         const r = await apiFetch("/api/v1/slots");
-        if (this.nichtAngemeldet && this.nichtAngemeldet(r)) return;
         if (!r.ok) {
           this.fehler = "Das Gerät hat die Einstellungen nicht herausgegeben.";
           return;
@@ -69,11 +68,15 @@ function sicherungHandler() {
     /// Eine Sicherung zurueckspielen.
     ///
     /// Reihenfolge ist nicht beliebig:
-    ///   1. Globale Einstellungen ZUERST -- darin steckt das Layout je Seite, und die
-    ///      Slot-Pruefung weist einen Rasterplatz ab, den das aktuelle Layout nicht hat.
-    ///   2. Dann alle vorhandenen Slots loeschen -- sonst blockiert ein alter Wert den
-    ///      Platz ("Rasterplatz ist bereits belegt") und die Sicherung ginge nur halb ein.
+    ///   1. ZUERST alle vorhandenen Werte loeschen -- das Geraet prueft ein neues Layout
+    ///      gegen den Bestand (auch gegen abgeschaltete Werte) und weist es ab, wenn ein
+    ///      Wert auf einem Platz liegt, den es nicht mehr gibt. Und ein alter Wert
+    ///      blockierte sonst seinen Platz ("Rasterplatz ist bereits belegt").
+    ///   2. Dann die globalen Einstellungen -- darin steckt das Layout je Seite, gegen
+    ///      das die Slot-Pruefung beim Anlegen den Rasterplatz prueft.
     ///   3. Dann die gesicherten Werte anlegen.
+    /// (Bis v0.3.0 kamen die Einstellungen zuerst; eine Sicherung mit engerem Layout als
+    /// der Bestand brach damit im ersten Schritt ab -- Audit 05.09.2026, N5.)
     async einspielen() {
       this.fehler = "";
       this.meldung = "";
@@ -99,6 +102,19 @@ function sicherungHandler() {
 
       this.laeuft = true;
       try {
+        this.fortschritt = "Alte Werte werden entfernt …";
+        const rAlt = await apiFetch("/api/v1/slots");
+        if (!rAlt.ok) {
+          this.fehler = "Das Gerät hat den Bestand nicht herausgegeben — es wurde nichts geändert.";
+          return;
+        }
+        const dAlt = await rAlt.json();
+        for (let i = 0; i < dAlt.slots.length; i++) {
+          if (dAlt.slots[i].url) {
+            await apiFetch(`/api/v1/slots/${i}`, { method: "DELETE" });
+          }
+        }
+
         this.fortschritt = "Einstellungen werden übernommen …";
         const rSet = await apiFetch("/api/v1/slots/settings", {
           method: "POST",
@@ -110,17 +126,8 @@ function sicherungHandler() {
           this.fehler =
             "Die Einstellungen wurden abgelehnt: " +
             (dSet.error || rSet.status) +
-            " — es wurde nichts weiter geändert.";
+            " — die alten Werte sind bereits entfernt, die gesicherten wurden nicht angelegt.";
           return;
-        }
-
-        this.fortschritt = "Alte Werte werden entfernt …";
-        const rAlt = await apiFetch("/api/v1/slots");
-        const dAlt = await rAlt.json();
-        for (let i = 0; i < dAlt.slots.length; i++) {
-          if (dAlt.slots[i].url) {
-            await apiFetch(`/api/v1/slots/${i}`, { method: "DELETE" });
-          }
         }
 
         let angelegt = 0;

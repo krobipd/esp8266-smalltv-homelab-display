@@ -79,7 +79,10 @@ await fetch(MOCK + "/api/v1/slots/settings", {
 });
 await fetch(MOCK + "/api/v1/slots", {
   method: "POST", headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ ...original, label: "Fremdwert", pos: 0, wertSize: 1 }),
+  // Platz 3 gibt es im Layout der Sicherung (ein grosser Wert) nicht: Die Firmware prueft
+  // ein neues Layout gegen den Bestand -- werden die Einstellungen VOR dem Loeschen
+  // geschickt, bricht die Wiederherstellung hier ab (Audit 05.09.2026, N5).
+  body: JSON.stringify({ ...original, label: "Fremdwert", pos: 3, wertSize: 1 }),
 });
 
 // 3) Sicherung einspielen

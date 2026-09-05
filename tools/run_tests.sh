@@ -27,6 +27,10 @@ echo "Host-Tests: 5x OK"
 # Die Syntaxpruefung oben sagt darueber nichts.
 node "$BASIS/tests/web/test_slots_payload.mjs"
 
+# Assistent: ein abgeschalteter Wert ist nicht frei (N4). Anmeldehinweis auf jeder Seite (B7).
+node "$BASIS/tests/web/test_slots_assistent.mjs"
+node "$BASIS/tests/web/test_anmeldung_hinweis.mjs"
+
 # Erkennung der Abbild-Art auf der Update-Seite -- gegen die echten Abbilder
 # aus dist/, weil ein Fehlgriff hier den falschen Flash-Bereich beschreibt.
 node "$BASIS/tests/web/test_ota_erkennung.mjs"

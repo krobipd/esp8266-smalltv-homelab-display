@@ -138,4 +138,19 @@ const pruefe = (bedingung, text) => {
   pruefe(gesendet.einheitDaneben === true, `Feld fehlt: einheitDaneben ist ${gesendet.einheitDaneben}`);
 }
 
-console.log("Werte-Seite: 6x OK");
+// 7) Ein Abrufintervall 0 bleibt 0 -- das Geraet lehnt es ab; still 30 daraus zu machen
+//    waere eine Bevormundung (N10). Nur ein LEERES Feld bekommt die Vorgabe.
+{
+  const k = komponente();
+  k.entwurf = sandbox.leererEntwurf();
+  k.entwurf.label = "E";
+  k.entwurf.url = "http://192.0.2.10/e";
+  k.entwurf.refreshSec = 0;
+  await k.speichern();
+  pruefe(gesendet.refreshSec === 0, "Intervall 0 wurde ersetzt: " + gesendet.refreshSec);
+  k.entwurf.refreshSec = "";
+  await k.speichern();
+  pruefe(gesendet.refreshSec === 30, "leeres Intervall bekam keine Vorgabe: " + gesendet.refreshSec);
+}
+
+console.log("Werte-Seite: 7x OK");

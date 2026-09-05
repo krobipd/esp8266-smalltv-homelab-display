@@ -89,6 +89,13 @@ function anmeldungHandler() {
         this.aenderMeldung = "Bitte ein Passwort eingeben.";
         return;
       }
+      // Der Browser schickt das Passwort im Anmeldekopf, und dort gibt es nur Latin-1 --
+      // gespeichert wird es als UTF-8. Ein Umlaut passt dann nie mehr zusammen: ausgesperrt.
+      if (/[^\x20-\x7e]/.test(neu)) {
+        this.aenderMeldung =
+          "Bitte nur Buchstaben, Ziffern und Zeichen ohne Umlaute — im Anmeldekopf lassen sich Umlaute nicht übertragen.";
+        return;
+      }
 
       this.laeuft = true;
       this.aenderMeldung = "Passwort wird gespeichert…";

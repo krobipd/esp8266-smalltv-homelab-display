@@ -340,7 +340,9 @@ function slotsHandler() {
         await this.configLaden();
         if (!this.config) return;
       }
-      const frei = this.config.slots.findIndex((s) => !s.enabled || !s.url);
+      // Frei ist nur ein Platz ohne Adresse. Ein abgeschalteter Wert ist eingerichtet und
+      // bleibt es -- ihn als frei zu nehmen hiesse, ihn beim Speichern still zu ueberschreiben.
+      const frei = this.config.slots.findIndex((s) => !s.url);
       if (frei < 0) {
         this.fehler = "Alle Slots sind belegt — zuerst einen löschen.";
         return;
@@ -575,7 +577,12 @@ function slotsHandler() {
         label: e.label.trim(),
         unit: (e.unit || "").trim(),
         decimals: Number(e.decimals) || 0,
-        refreshSec: Number(e.refreshSec) || 30,
+        // Leer = nicht angefasst (alter Slot): Vorgabe. Eine eingetragene 0 bleibt 0 und
+        // wird vom Geraet abgelehnt -- nicht still durch 30 ersetzt.
+        refreshSec:
+          e.refreshSec === "" || e.refreshSec === null || e.refreshSec === undefined
+            ? 30
+            : Number(e.refreshSec),
         page: Number(e.page) || 1,
         pos: Number(e.pos) || 0,
         // Eine eingetragene 0 bleibt eine 0 -- sie ist ungueltig und soll vom Geraet

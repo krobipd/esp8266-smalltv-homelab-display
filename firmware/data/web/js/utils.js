@@ -13,7 +13,22 @@ function apiFetch(url, options = {}) {
     fetchOptions.headers["Authorization"] = `Bearer ${token}`;
   }
 
-  return fetch(url, fetchOptions);
+  // Ein 401 heisst "Anmeldung noetig" -- auf JEDER Seite, nicht nur auf der Werte-Seite.
+  // Der Hinweis steht im Kopfbereich (header.html); die Handler bekommen die Antwort
+  // unveraendert zurueck und muessen nichts davon wissen.
+  return fetch(url, fetchOptions).then((antwort) => {
+    if (antwort.status === 401) zeigeAnmeldeHinweis();
+    return antwort;
+  });
+}
+
+// Gemerkt, weil der Kopfbereich nachgeladen wird: Kommt das 401 vor dem Kopf, wird der
+// Hinweis eingeblendet, sobald der Kopf da ist.
+let anmeldungNoetig = false;
+function zeigeAnmeldeHinweis() {
+  anmeldungNoetig = true;
+  const el = document.getElementById("anmelde-hinweis");
+  if (el) el.hidden = false;
 }
 
 // Kopf- und Fusszeile werden nachgeladen. Kommt dabei nichts an, fehlt die ganze
@@ -68,6 +83,7 @@ document.addEventListener("DOMContentLoaded", () => {
           : "Placeholder Title";
       setHeaderTitle(pageTitle);
       markiereAktiveSeite();
+      if (anmeldungNoetig) zeigeAnmeldeHinweis();
     });
   }
   if (document.getElementById("footer-placeholder")) {

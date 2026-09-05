@@ -15,7 +15,8 @@ function wifiHandler() {
         const res = await apiFetch("/api/v1/wifi/scan");
         const nets = await res.json();
         // process: sort by rssi desc and enrich display fields
-        this.networks = (nets || [])
+        // Bei aktivem Passwortschutz kommt statt der Liste ein 401-Objekt -- kein Array.
+        this.networks = (Array.isArray(nets) ? nets : [])
           .map((n) => {
             const rssi =
               typeof n.rssi === "number" ? n.rssi : parseInt(n.rssi) || 0;
