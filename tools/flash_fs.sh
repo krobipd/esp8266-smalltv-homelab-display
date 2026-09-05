@@ -5,15 +5,17 @@
 #
 # Ablauf: Skript starten, DANN das WLAN auf "GeekMagic" wechseln.
 # Das Skript wartet, bis das Geraet antwortet, laedt hoch und meldet das Ergebnis.
-# Es braucht kein Internet und keine laufende Claude-Sitzung.
+# Es braucht kein Internet.
 #
-#   sh tools/flash_fs.sh                      # Standard: dist/v0.1.0/smalltv-littlefs-v0.1.0.bin
+#   sh tools/flash_fs.sh                      # Standard: dist/<VERSION>/smalltv-littlefs-<VERSION>.bin
 #   sh tools/flash_fs.sh <datei> [<adresse>]  # andere Datei / anderes Ziel
 
 set -eu
 
 HIER=$(cd "$(dirname "$0")/.." && pwd)
-BIN=${1:-"$HIER/dist/v0.1.0/smalltv-littlefs-v0.1.0.bin"}
+# Standardabbild folgt firmware/VERSION -- ein fester Pfad flashte irgendwann eine alte Oberflaeche.
+VERSION=$(tr -d '[:space:]' < "$HIER/firmware/VERSION")
+BIN=${1:-"$HIER/dist/$VERSION/smalltv-littlefs-$VERSION.bin"}
 ZIEL=${2:-"192.168.4.1"}
 WARTE_MAX=300   # Sekunden, die auf das Geraet gewartet wird
 LOG="$HIER/flash_fs.log"

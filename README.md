@@ -50,6 +50,7 @@ auszugeben.
   Sicherheitsnetz. Seit v0.3.0 bleibt die Einrichtung bei einem Dateisystem-Update von
   selbst erhalten: Die Firmware schreibt sie ins neue Dateisystem zurück.
 - **Passwortschutz optional** — ab Werk offen, zuschaltbar, leeres Passwort hebt ihn auf.
+  Vergessen? Der Rettungsmodus setzt es zurück, Anleitung in [USAGE.md](docs/USAGE.md).
 
 ## 🔌 Datenquellen
 

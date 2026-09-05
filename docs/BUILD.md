@@ -109,4 +109,4 @@ Bei aktivem Passwortschutz `--passwort` mitgeben.
 | Seite zeigt nur ein Upload-Formular | `littlefs.bin` fehlt | Dateisystem-Abbild aufspielen |
 | Oberfläche verhält sich seltsam nach einem Update | Browser hält alte Dateien | Cache leeren oder privates Fenster; ab v0.2.3 verhindert die Firmware das von sich aus |
 | `192.168.4.1` nicht erreichbar | Rechner noch im Heimnetz | WLAN wechseln — die Adresse liegt nicht im Heimnetz |
-| Kein `GeekMagic`-WLAN sichtbar | Gerät hängt schon im Heimnetz | Adresse vom Display ablesen |
+| Kein `GeekMagic`-WLAN sichtbar | Gerät hängt schon im Heimnetz | Adresse vom Display ablesen: nach dem Start steht sie 10 s im Startbild, ohne eingerichtete Werte dauerhaft auf der Leerseite |
