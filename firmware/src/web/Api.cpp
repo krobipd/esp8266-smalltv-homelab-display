@@ -48,7 +48,7 @@ static constexpr int OTA_TEXT_X_OFFSET = 50;
 static constexpr int OTA_TEXT_Y_OFFSET = 80;
 static constexpr int OTA_LOADING_Y_OFFSET = 110;
 
-static void otaHandleStart(HTTPUpload& upload, int mode);
+static void otaHandleStart(Webserver* webserver, HTTPUpload& upload, int mode);
 static void otaHandleWrite(HTTPUpload& upload, int mode);
 static void otaHandleEnd(HTTPUpload& upload, int mode);
 static void otaHandleAborted(HTTPUpload& upload, int mode);
@@ -65,6 +65,10 @@ static constexpr int BEARER_LEN = 7;
  */
 void registerApiEndpoints(Webserver* webserver) {
     Logger::info("Registering API endpoints", "API");
+
+    // Kopfzeile mit der Pruefsumme des Abbilds einsammeln lassen. collectHeaders()
+    // ersetzt die Liste, haelt Authorization und If-None-Match aber von sich aus fest.
+    webserver->raw().collectHeaders("X-Abbild-MD5");
 
     // @openapi {get} /wifi/scan version=v1 group=WiFi summary="Scan available WiFi networks" requiresAuth=true
     // responses=200:application/json,401:application/json
@@ -725,7 +729,7 @@ void handleOtaUpload(Webserver* webserver, int mode) {
 
     switch (upload.status) {
         case UPLOAD_FILE_START:
-            otaHandleStart(upload, mode);
+            otaHandleStart(webserver, upload, mode);
             break;
         case UPLOAD_FILE_WRITE:
             otaHandleWrite(upload, mode);
@@ -908,7 +912,7 @@ void handleWifiStatus(Webserver* webserver) {
  *
  * @return void
  */
-static void otaHandleStart(HTTPUpload& upload, int mode) {
+static void otaHandleStart(Webserver* webserver, HTTPUpload& upload, int mode) {
     Logger::info((String("OTA start: ") + upload.filename).c_str(), "API::OTA");
 
     otaError = false;
@@ -949,6 +953,21 @@ static void otaHandleStart(HTTPUpload& upload, int mode) {
         if (mode == U_FS) {
             LittleFS.begin();  // Oberflaeche soll weiterlaufen
         }
+        return;
+    }
+
+    // Firmware nur mit Pruefsumme: Der Updater prueft sonst nur das erste Byte und
+    // aktiviert auch ein unvollstaendiges Abbild -- ohne Rollback ein Brick ohne Serial.
+    // Fuer das Dateisystem ist die Summe willkommen, aber nicht Pflicht: Ein kaputtes
+    // Dateisystem schaltet /legacyupdate frei, ein kaputtes Programm nicht.
+    const String& md5 = webserver->raw().header("X-Abbild-MD5");
+    if (md5.length() == 32) {
+        Update.setMD5(md5.c_str());
+    } else if (mode == U_FLASH) {
+        Update.end();
+        otaError = true;
+        otaStatus = "Pruefsumme fehlt -- Update-Seite neu laden oder curl mit X-Abbild-MD5";
+        Logger::error(otaStatus.c_str(), "API::OTA");
     }
 }
 

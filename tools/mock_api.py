@@ -17,6 +17,7 @@ ACHTUNG: Die Zustandsbewertung unten ist eine bewusste Nachbildung der C++-Logik
 smalltv_util.h -- reine Testinfrastruktur. Massgeblich ist immer die C++-Fassung samt
 ihrer Host-Tests; diese Kopie existiert nur, damit die Oberflaeche etwas anzuzeigen hat.
 """
+import hashlib
 import json
 import math
 import os
@@ -49,11 +50,18 @@ FW_VERSION = _fw_version()
 ABBILD_UNBEKANNT, ABBILD_FIRMWARE, ABBILD_DATEISYSTEM = 0, 1, 2
 
 
-def inhalt_aus_multipart(roh):
-    """Die ersten Nutzbytes aus einem multipart-Koerper -- der Dateiinhalt beginnt
-    nach der Leerzeile hinter den Teil-Kopfzeilen."""
+def datei_aus_multipart(roh, content_type):
+    """Der Inhalt des Datei-Teils: nach der Leerzeile hinter den Teil-Kopfzeilen bis zur
+    schliessenden Grenze. Reicht fuer das, was Browser und curl schicken (ein Teil)."""
+    m = re.search(r"boundary=([^;]+)", content_type or "")
+    grenze = ("--" + m.group(1).strip().strip('"')).encode() if m else None
     i = roh.find(b"\r\n\r\n")
-    return roh[i + 4:] if i >= 0 else roh
+    daten = roh[i + 4:] if i >= 0 else roh
+    if grenze:
+        j = daten.rfind(b"\r\n" + grenze)
+        if j >= 0:
+            daten = daten[:j]
+    return daten
 
 
 def erkenne_abbild(daten):
@@ -465,25 +473,31 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, {"status": "cancelling", "message": "Cancel request received"})
         if p in ("/api/v1/ota/fw", "/api/v1/ota/fs"):
             # Upload einlesen und verwerfen -- der Mock flasht nichts, sagt das aber ehrlich.
-            # Die Abbild-Art wird trotzdem geprueft, 1:1 wie otaHandleWrite() der Firmware:
-            # Ein Mock, der jede Datei annimmt, verbirgt genau den Fehlgriff, gegen den die
-            # Pruefung gebaut wurde.
+            # Abbild-Art und Pruefsumme werden trotzdem geprueft, 1:1 wie otaHandleStart()
+            # und otaHandleWrite() der Firmware: Ein Mock, der jede Datei annimmt, verbirgt
+            # genau die Fehlgriffe, gegen die die Pruefungen gebaut wurden.
             n = int(self.headers.get("Content-Length") or 0)
-            anfang = b""
-            while n > 0:
-                stueck = self.rfile.read(min(n, 65536))
-                if not stueck:
-                    break
-                n -= len(stueck)
-                if len(anfang) < 4096:
-                    anfang += stueck[:4096]
+            roh = self.rfile.read(n) if n > 0 else b""
+            daten = datei_aus_multipart(roh, self.headers.get("Content-Type", ""))
             erwartet = ABBILD_DATEISYSTEM if p.endswith("/fs") else ABBILD_FIRMWARE
-            erkannt = erkenne_abbild(inhalt_aus_multipart(anfang))
+            md5 = (self.headers.get("X-Abbild-MD5") or "").strip().lower()
+            if len(md5) != 32 and erwartet == ABBILD_FIRMWARE:
+                text = "Pruefsumme fehlt -- Update-Seite neu laden oder curl mit X-Abbild-MD5"
+                LOGS.append("[ota] abgelehnt: " + text)
+                return self._json(200, {"status": "Error", "message": text})
+            erkannt = erkenne_abbild(daten[:16])
             if erkannt != erwartet:
                 text = abbild_fehlertext(erkannt, erwartet)
                 LOGS.append("[ota] abgelehnt: " + text)
                 # Antwortform wie handleOtaFinished(): HTTP 200 mit status "Error".
                 return self._json(200, {"status": "Error", "message": text})
+            if len(md5) == 32:
+                ist = hashlib.md5(daten).hexdigest()
+                if ist != md5:
+                    # Wortlaut des Updaters (Updater.cpp, getErrorString).
+                    text = "MD5 Failed: expected:%s, calculated:%s" % (md5, ist)
+                    LOGS.append("[ota] abgelehnt: " + text)
+                    return self._json(200, {"status": "Error", "message": text})
             LOGS.append("[ota] Upload angenommen (Mock: nichts geschrieben)")
             return self._json(200, {"status": "Upload successful",
                                     "message": "Mock: nichts geflasht, Datei verworfen"})

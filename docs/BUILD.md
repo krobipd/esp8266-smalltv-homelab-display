@@ -75,6 +75,17 @@ Seite **Update** auf dem Gerät. Sie erkennt selbst, welche Sorte Abbild man aus
 und zeigt es an („Erkannt: Firmware" / „Erkannt: Oberfläche (Dateisystem)"). Das Gerät prüft
 es unabhängig davon noch einmal und lehnt die falsche Sorte ab, bevor es schreibt.
 
+Seit v0.3.2 verlangt das Gerät für ein **Firmware**-Abbild zusätzlich die MD5-Prüfsumme
+(Kopfzeile `X-Abbild-MD5`) und aktiviert nur ein Abbild, dessen Summe stimmt — der Updater
+selbst prüft nur das erste Byte, und ein unvollständiges Programm wäre ohne Rollback ein
+Brick. Die Update-Seite rechnet die Summe selbst; ohne Browser (`MD5SUMS.txt` liegt im Paket):
+
+```sh
+curl -F "file=@smalltv-firmware-vX.Y.Z.bin" \
+     -H "X-Abbild-MD5: $(grep firmware MD5SUMS.txt | cut -d' ' -f1)" \
+     http://<gerät>/api/v1/ota/fw
+```
+
 > ⚠️ **Firmware zuerst, dann Dateisystem.** Seit Firmware v0.3.0 schreibt das Gerät seine
 > Einrichtung nach einem Dateisystem-Update selbst ins neue Dateisystem zurück. Läuft noch
 > eine ältere Firmware, löscht das Dateisystem-Update `/slots.json` — dann vorher *Sichern*

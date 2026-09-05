@@ -35,6 +35,9 @@ node "$BASIS/tests/web/test_anmeldung_hinweis.mjs"
 # aus dist/, weil ein Fehlgriff hier den falschen Flash-Bereich beschreibt.
 node "$BASIS/tests/web/test_ota_erkennung.mjs"
 
+# Die Pruefsumme, die die Update-Seite selbst rechnet -- gegen Node und die echten Abbilder.
+node "$BASIS/tests/web/test_md5.mjs"
+
 # Sichern/Wiederherstellen laeuft gegen die echten Endpunkte -- dafuer braucht es den
 # Mock. Er wird hier gestartet und danach zuverlaessig wieder beendet (auch im Fehlerfall).
 python3 "$BASIS/tools/mock_api.py" >/dev/null 2>&1 &

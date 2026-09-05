@@ -63,6 +63,11 @@ function otaUploadHandler() {
       const endpoint =
         art === ART_FIRMWARE ? "/api/v1/ota/fw" : "/api/v1/ota/fs";
 
+      // Pruefsumme des ganzen Abbilds: Das Geraet aktiviert nur, was unversehrt ankam --
+      // der Updater selbst prueft sonst nur das erste Byte (kein Rollback auf diesem Chip).
+      this.uploadMessage = "Prüfsumme wird berechnet …";
+      const pruefsumme = md5Bytes(new Uint8Array(await file.arrayBuffer()));
+
       this.uploading = true;
       this.uploadMessage = "";
       this.progress = 0;
@@ -123,6 +128,7 @@ function otaUploadHandler() {
       };
 
       this.xhr.open("POST", endpoint);
+      this.xhr.setRequestHeader("X-Abbild-MD5", pruefsumme);
       const token = localStorage.getItem("Authorization");
       if (token) {
         this.xhr.setRequestHeader("Authorization", `Bearer ${token}`);

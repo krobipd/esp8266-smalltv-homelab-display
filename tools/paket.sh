@@ -30,6 +30,11 @@ mkdir -p "$ZIEL"
 cp "$BUILD/firmware.bin" "$ZIEL/smalltv-firmware-$VERSION.bin"
 cp "$BUILD/littlefs.bin" "$ZIEL/smalltv-littlefs-$VERSION.bin"
 (cd "$ZIEL" && shasum -a 256 smalltv-*.bin > SHA256SUMS.txt)
+# MD5 dazu: Die Firmware verlangt seit v0.3.2 die Pruefsumme des Abbilds (Kopfzeile
+# X-Abbild-MD5). Die Update-Seite rechnet sie selbst, curl-Nutzer nehmen sie von hier.
+(cd "$ZIEL" && python3 -c 'import hashlib, sys
+for f in sys.argv[1:]:
+    print(hashlib.md5(open(f, "rb").read()).hexdigest() + "  " + f)' smalltv-*.bin > MD5SUMS.txt)
 
 echo "Paket: dist/$VERSION/"
 ls -l "$ZIEL"
