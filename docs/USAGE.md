@@ -38,7 +38,11 @@ unterstützt.
 
 **3. Beschriftung und Einheit.** Beschriftung darf leer bleiben — ein einzelner,
 offensichtlicher Wert braucht keine Überschrift. Die Einheit fasst 15 Zeichen und wird gern
-als kleiner Zusatz benutzt (`% (Woche)`).
+als kleiner Zusatz benutzt (`% (Woche)`). Beide dürfen Umlaute, ß und das Gradzeichen
+enthalten (`°C`) — genau diese Zeichen kennt das Display zusätzlich zu Buchstaben, Ziffern und
+Satzzeichen. Alles andere wird beim Speichern abgelehnt, statt als falsches Zeichen auf dem
+Display zu landen. Die Grenzen (Beschriftung 23, Einheit 15) zählen in Bytes: Umlaute und `°`
+belegen zwei.
 
 **4. Darstellung.**
 

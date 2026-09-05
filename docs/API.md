@@ -50,6 +50,11 @@ Ein Wert (Auszug):
 }
 ```
 
+`label` (max. 23), `unit` (max. 15) und `field` (max. 31) werden in **Bytes** (UTF-8) begrenzt —
+Umlaute und `°` belegen zwei. `label` und `unit` erscheinen auf dem Display und dürfen nur Zeichen
+enthalten, die dessen Zeichensatz hat: ASCII sowie `° ä ö ü Ä Ö Ü ß`; alles andere wird mit
+`400` abgelehnt. `field` wird nie gezeichnet, dort sind nur Steuerzeichen verboten.
+
 Die Prüfung ist streng und **transaktional**: Wird ein Feld abgelehnt, ändert sich gar
 nichts. Ein Wert außerhalb des erlaubten Bereichs wird **abgewiesen**, nicht stillschweigend
 zurechtgebogen — sonst bekäme man „gespeichert" für etwas, das man nie eingestellt hat.

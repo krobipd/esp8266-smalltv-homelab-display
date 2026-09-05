@@ -217,15 +217,21 @@ void textAb(Arduino_GFX* gfx, const char* text, int16_t x, int16_t y, int16_t ma
         return;
     }
 
+    // UTF-8 -> Zeichensatz des Displays (Gradzeichen, Umlaute). Nicht darstellbares
+    // kommt hier nicht an, config_codec weist es beim Speichern ab; kaeme es doch,
+    // endet die Zeile vor dem fremden Zeichen statt in Muell.
+    char font[32];
+    utf8NachFont(text, font, sizeof(font));
+
     char gekuerzt[24];
-    size_t n = strlen(text);
+    size_t n = strlen(font);
     if (n > (size_t)passt) {
         n = (size_t)passt;
     }
     if (n > sizeof(gekuerzt) - 1) {
         n = sizeof(gekuerzt) - 1;
     }
-    memcpy(gekuerzt, text, n);
+    memcpy(gekuerzt, font, n);
     gekuerzt[n] = 0;
 
     gfx->setTextSize(groesse);
@@ -253,15 +259,21 @@ void textMittig(Arduino_GFX* gfx, const char* text, int16_t x, int16_t y, int16_
         return;
     }
 
+    // UTF-8 -> Zeichensatz des Displays (Gradzeichen, Umlaute). Nicht darstellbares
+    // kommt hier nicht an, config_codec weist es beim Speichern ab; kaeme es doch,
+    // endet die Zeile vor dem fremden Zeichen statt in Muell.
+    char font[32];
+    utf8NachFont(text, font, sizeof(font));
+
     char gekuerzt[24];
-    size_t n = strlen(text);
+    size_t n = strlen(font);
     if (n > (size_t)passt) {
         n = (size_t)passt;
     }
     if (n > sizeof(gekuerzt) - 1) {
         n = sizeof(gekuerzt) - 1;
     }
-    memcpy(gekuerzt, text, n);
+    memcpy(gekuerzt, font, n);
     gekuerzt[n] = 0;
 
     const int16_t textBreite = (int16_t)((int16_t)n * zeichenBreite);
@@ -373,8 +385,9 @@ void zeichneKachel(uint8_t index, bool rahmen) {
 
     if (mitZahl) {
         if (einheitDaneben) {
+            // Breite in Zeichen des Displays, nicht in Bytes: "C" mit Gradzeichen sind zwei.
             const ZeileWertEinheit z = layoutWertEinheit(x, cursorY, w, strlen(wert), s.wertSize,
-                                                         strlen(s.unit), s.unitSize);
+                                                         fontZeichen(s.unit), s.unitSize);
             textAb(gfx, wert, z.wertX, z.wertY, (int16_t)(x + w - z.wertX), s.wertSize, farbe);
             textAb(gfx, s.unit, z.einheitX, z.einheitY, (int16_t)(x + w - z.einheitX), s.unitSize,
                    veraltet ? FARBE_VERALTET : FARBE_LABEL);

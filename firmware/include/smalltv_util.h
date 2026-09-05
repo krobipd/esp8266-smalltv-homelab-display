@@ -281,6 +281,85 @@ inline bool slotTextValid(const char* s, size_t maxLen) {
     return true;
 }
 
+// ---------- Nicht-ASCII auf dem Display ----------
+//
+// Der klassische GFX-Zeichensatz (5x7, glcdfont) ist nach Codepage 437 geordnet und
+// kennt kein UTF-8: ein "ue" als 0xC3 0xBC ergaebe zwei Fremdzeichen. Umgesetzt wird
+// deshalb vor dem Zeichnen, und zwar genau das, was der Zeichensatz hat und im Homelab
+// vorkommt: Gradzeichen, Umlaute, sz. Alles andere Nicht-ASCII wird beim SPEICHERN
+// abgewiesen (config_codec.h) -- lieber eine Meldung als Muell auf dem Display.
+// Die Bibliothek verschiebt keine Codes (kein Adafruit-Versatz ab 0xB0; geprueft
+// 06.09.2026 in Arduino_GFX.cpp: font[c * 5 + i]); die acht Glyphen liegen in
+// glcdfont.h an genau diesen Stellen (auf dem Host gerendert).
+struct UmsetzZeichen {
+    unsigned char utf8Erst;   // alle acht sind Zwei-Byte-Sequenzen
+    unsigned char utf8Zweit;
+    unsigned char font;
+};
+static const UmsetzZeichen FONT_UMSETZUNG[] = {
+    {0xC2, 0xB0, 0xF8},  // Grad
+    {0xC3, 0xA4, 0x84},  // ae
+    {0xC3, 0xB6, 0x94},  // oe
+    {0xC3, 0xBC, 0x81},  // ue
+    {0xC3, 0x84, 0x8E},  // AE
+    {0xC3, 0x96, 0x99},  // OE
+    {0xC3, 0x9C, 0x9A},  // UE
+    {0xC3, 0x9F, 0xE1},  // sz
+};
+
+// UTF-8 -> Bytes des Zeichensatzes. false, wenn ein Zeichen nicht darstellbar ist
+// oder out nicht reicht; out ist in jedem Fall terminiert und enthaelt, was bis
+// dahin umgesetzt wurde.
+inline bool utf8NachFont(const char* in, char* out, size_t outSize) {
+    if (out == nullptr || outSize == 0) return false;
+    size_t o = 0;
+    bool ok = true;
+    for (size_t i = 0; in != nullptr && in[i] != 0;) {
+        unsigned char ziel = (unsigned char)in[i];
+        size_t laenge = 1;
+        if (ziel >= 0x80) {
+            ok = false;
+            for (const UmsetzZeichen& u : FONT_UMSETZUNG) {
+                if (ziel == u.utf8Erst && (unsigned char)in[i + 1] == u.utf8Zweit) {
+                    ziel = u.font;
+                    laenge = 2;
+                    ok = true;
+                    break;
+                }
+            }
+            if (!ok) break;
+        }
+        if (o + 1 >= outSize) {
+            ok = false;
+            break;
+        }
+        out[o++] = (char)ziel;
+        i += laenge;
+    }
+    out[o] = 0;
+    return ok;
+}
+
+// Anzahl der Zeichen, die auf dem Display stehen -- nicht der Bytes. Fuer die
+// Breitenrechnung: das Gradzeichen ist EIN Zeichen breit, braucht in UTF-8 aber zwei Bytes.
+inline size_t fontZeichen(const char* s) {
+    size_t n = 0;
+    for (; s != nullptr && *s != 0; s++) {
+        if (((unsigned char)*s & 0xC0) != 0x80) n++;  // Folgebytes zaehlen nicht
+    }
+    return n;
+}
+
+// Text, der auf dem Display erscheint (Beschriftung, Einheit): wie slotTextValid,
+// und zusaetzlich muss jedes Zeichen darstellbar sein. Der Feldname wird nie
+// gezeichnet und bleibt bei slotTextValid.
+inline bool anzeigeTextValid(const char* s, size_t maxLen) {
+    if (!slotTextValid(s, maxLen)) return false;
+    char probe[LABEL_LEN];  // umgesetzt ist nie laenger als die Eingabe in Bytes
+    static_assert(UNIT_LEN <= LABEL_LEN, "probe muss den laengsten Anzeigetext fassen");
+    return maxLen <= sizeof(probe) && utf8NachFont(s, probe, sizeof(probe));
+}
+
 // Nur http: TLS ist auf diesem Chip ausgeschlossen (Heap), also gar nicht erst zulassen.
 inline bool slotUrlValid(const char* url) {
     if (url == nullptr) return false;

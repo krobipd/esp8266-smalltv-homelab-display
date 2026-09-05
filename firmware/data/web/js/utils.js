@@ -22,6 +22,18 @@ function apiFetch(url, options = {}) {
   });
 }
 
+// Länge in Bytes (UTF-8), so wie das Gerät sie zählt: "Küche" sind 6, nicht 5.
+function byteLaenge(s) {
+  return new TextEncoder().encode(s == null ? "" : String(s)).length;
+}
+
+// Was das Display zeichnen kann: ASCII plus ° ä ö ü Ä Ö Ü ß (Zeichensatz
+// Codepage 437, Firmware smalltv_util.h FONT_UMSETZUNG). Gilt für alles, was auf dem
+// Display erscheint: Beschriftung und Einheit.
+const DISPLAY_ZEICHEN = /^[\x20-\x7e\u00b0\u00e4\u00f6\u00fc\u00c4\u00d6\u00dc\u00df]*$/;
+// Steuerzeichen lehnt das Gerät in jedem Text ab, auch im nie gezeichneten Feldnamen.
+const OHNE_STEUERZEICHEN = /^[^\x00-\x1f\x7f]*$/;
+
 // Gemerkt, weil der Kopfbereich nachgeladen wird: Kommt das 401 vor dem Kopf, wird der
 // Hinweis eingeblendet, sobald der Kopf da ist.
 let anmeldungNoetig = false;

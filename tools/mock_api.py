@@ -104,6 +104,10 @@ def etag_passt(kopfzeile, etag):
     return False
 
 MAX_SLOTS = 12
+# Was das Display zeichnen kann (Firmware smalltv_util.h, FONT_UMSETZUNG): ASCII plus
+# ° ä ö ü Ä Ö Ü ß. Steuerzeichen lehnt das Geraet in jedem Text ab.
+DISPLAY_ZEICHEN = re.compile(r"^[\x20-\x7e\u00b0\u00e4\u00f6\u00fc\u00c4\u00d6\u00dc\u00df]*$")
+OHNE_STEUERZEICHEN = re.compile(r"^[^\x00-\x1f\x7f]*$")
 MAX_PAGES = 4
 
 # Startzustand: bewusst LEER -- das ausgelieferte Geraet hat keine vorbelegten Slots.
@@ -611,15 +615,31 @@ class Handler(BaseHTTPRequestHandler):
         i = d.get("index")
         if not isinstance(i, int) or not 0 <= i < MAX_SLOTS:
             return self._fehler(400, "Slot-Nummer ausserhalb des Bereichs")
-        if not str(d.get("url", "")).startswith("http://"):
+        # Wie das Geraet (config_codec.h, gleiche Reihenfolge, gleiche Meldungen):
+        # Laengen in BYTES (UTF-8, Umlaute zaehlen doppelt); Beschriftung und Einheit nur
+        # aus Zeichen, die das Display zeichnen kann (N6). Der Feldname wird nie gezeichnet
+        # und muss nur ohne Steuerzeichen sein. Die Beschriftung darf leer bleiben (v0.2.6).
+        # Waere der Mock hier laxer, liesse er Eingaben durch, die das Geraet ablehnt.
+        url = str(d.get("url", ""))
+        label = str(d.get("label", ""))
+        feld = str(d.get("field", ""))
+        einheit = str(d.get("unit", ""))
+        if len(url.encode("utf-8")) > 127:
+            return self._fehler(400, "URL ist zu lang (max 127 Zeichen)")
+        if len(label.encode("utf-8")) > 23:
+            return self._fehler(400, "Beschriftung ist zu lang (max 23 Zeichen, Umlaute zaehlen doppelt)")
+        if len(feld.encode("utf-8")) > 31:
+            return self._fehler(400, "Feldname ist zu lang (max 31 Zeichen)")
+        if len(einheit.encode("utf-8")) > 15:
+            return self._fehler(400, "Einheit ist zu lang (max 15 Zeichen, Umlaute zaehlen doppelt)")
+        if not url.startswith("http://"):
             return self._fehler(400, "URL ungueltig (nur http://, max 127 Zeichen)")
-        # Wie die Firmware seit v0.2.6: Die Beschriftung darf leer bleiben, nur zu lang
-        # nicht. Die Einheit hat eine eigene Grenze -- waere der Mock hier laxer, liesse
-        # er Eingaben durch, die das Geraet ablehnt.
-        if len(str(d.get("label", ""))) > 23:
-            return self._fehler(400, "Beschriftung ist zu lang")
-        if len(str(d.get("unit", ""))) > 15:
-            return self._fehler(400, "Einheit ist zu lang (max 15 Zeichen)")
+        if label and not DISPLAY_ZEICHEN.match(label):
+            return self._fehler(400, "Beschriftung ungueltig (zu lang oder Zeichen, das das Display nicht kennt)")
+        if feld and not OHNE_STEUERZEICHEN.match(feld):
+            return self._fehler(400, "Feldname ungueltig")
+        if einheit and not DISPLAY_ZEICHEN.match(einheit):
+            return self._fehler(400, "Einheit ungueltig (zu lang oder Zeichen, das das Display nicht kennt)")
         r = int(d.get("refreshSec") or 0)
         if not 5 <= r <= 3600:
             return self._fehler(400, "Intervall nur 5 bis 3600 Sekunden")

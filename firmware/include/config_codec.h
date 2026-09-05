@@ -165,7 +165,7 @@ inline bool slotFromDoc(JsonDocument& doc, const Config& cfg, uint8_t slotIndex,
         return false;
     }
     if (!rohlaengePasst(doc["label"], LABEL_LEN)) {
-        setErr(errOut, errSize, "Beschriftung ist zu lang (max 23 Zeichen)");
+        setErr(errOut, errSize, "Beschriftung ist zu lang (max 23 Zeichen, Umlaute zaehlen doppelt)");
         return false;
     }
     if (!rohlaengePasst(doc["field"], FIELD_LEN)) {
@@ -173,7 +173,7 @@ inline bool slotFromDoc(JsonDocument& doc, const Config& cfg, uint8_t slotIndex,
         return false;
     }
     if (!rohlaengePasst(doc["unit"], UNIT_LEN)) {
-        setErr(errOut, errSize, "Einheit ist zu lang (max 15 Zeichen)");
+        setErr(errOut, errSize, "Einheit ist zu lang (max 15 Zeichen, Umlaute zaehlen doppelt)");
         return false;
     }
 
@@ -191,16 +191,20 @@ inline bool slotFromDoc(JsonDocument& doc, const Config& cfg, uint8_t slotIndex,
     // Die Beschriftung darf leer bleiben (seit v0.2.6): Wer eine Seite mit einem
     // einzigen, offensichtlichen Wert baut, braucht keine Ueberschrift darueber --
     // und eine erzwungene ist nur Platzverbrauch.
-    if (s.label[0] != 0 && !slotTextValid(s.label, LABEL_LEN)) {
-        setErr(errOut, errSize, "Beschriftung ist zu lang");
+    // Beschriftung und Einheit werden gezeichnet: nur Zeichen, die der Zeichensatz des
+    // Displays hat (smalltv_util.h, FONT_UMSETZUNG). Ein fremdes Zeichen wird hier
+    // abgewiesen, nicht still ersetzt -- sonst stuende Muell auf dem Display, und der
+    // Nutzer wuesste nicht, warum. Der Feldname wird nie gezeichnet.
+    if (s.label[0] != 0 && !anzeigeTextValid(s.label, LABEL_LEN)) {
+        setErr(errOut, errSize, "Beschriftung ungueltig (zu lang oder Zeichen, das das Display nicht kennt)");
         return false;
     }
     if (s.field[0] != 0 && !slotTextValid(s.field, FIELD_LEN)) {
         setErr(errOut, errSize, "Feldname ungueltig");
         return false;
     }
-    if (s.unit[0] != 0 && !slotTextValid(s.unit, UNIT_LEN)) {
-        setErr(errOut, errSize, "Einheit ungueltig");
+    if (s.unit[0] != 0 && !anzeigeTextValid(s.unit, UNIT_LEN)) {
+        setErr(errOut, errSize, "Einheit ungueltig (zu lang oder Zeichen, das das Display nicht kennt)");
         return false;
     }
 

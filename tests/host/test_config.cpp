@@ -233,6 +233,24 @@ int main() {
     assert(s.thr.hasWarnAbove && s.thr.warnAbove == 3000.0f);
     assert(s.thr.hasAlarmBelow && s.thr.alarmBelow == -5.5f);
 
+    // --- Einheit mit Gradzeichen geht durch, ein nicht darstellbares Zeichen nicht (N6) ---
+    {
+        Config frei = leereConfig();
+        Slot g = {};
+        char e4[96] = {0};
+        assert(slotFromJson("{\"url\":\"http://192.0.2.10/a\",\"label\":\"Aussen\",\"unit\":\"\\u00b0C\","
+                            "\"refreshSec\":30,\"page\":3,\"pos\":0}", frei, 0, g, e4, sizeof(e4)));
+        assert(strcmp(g.unit, "\xc2\xb0" "C") == 0);
+        e4[0] = 0;
+        assert(!slotFromJson("{\"url\":\"http://192.0.2.10/a\",\"label\":\"A\",\"unit\":\"\\u03a9\","
+                             "\"refreshSec\":30,\"page\":3,\"pos\":0}", frei, 0, g, e4, sizeof(e4)));
+        assert(strstr(e4, "Display") != nullptr);
+        // Der Feldname wird nie gezeichnet -- ihn trifft die Display-Regel nicht.
+        e4[0] = 0;
+        assert(slotFromJson("{\"url\":\"http://192.0.2.10/a\",\"label\":\"A\",\"field\":\"\\u03a9\","
+                            "\"refreshSec\":30,\"page\":3,\"pos\":0}", frei, 0, g, e4, sizeof(e4)));
+    }
+
     // --- Rundlauf: Config -> JSON -> Config ergibt dasselbe ---
     Config a = leereConfig();
     a.rotateSec = 25;

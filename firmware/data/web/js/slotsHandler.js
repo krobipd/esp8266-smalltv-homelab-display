@@ -538,18 +538,42 @@ function slotsHandler() {
         this.fehler = "Die URL muss mit http:// beginnen (verschlüsselte Verbindungen kann das Gerät nicht).";
         return false;
       }
-      if (String(e.url).length > 127) {
+      if (byteLaenge(e.url) > 127) {
         this.fehler = "Die URL ist zu lang (höchstens 127 Zeichen).";
         return false;
       }
-      // Keine Pflicht-Beschriftung mehr: Ein einzelner, offensichtlicher Wert braucht
+      // Das Gerät zählt Bytes (UTF-8): Umlaute und ° belegen zwei. Und es zeichnet nur,
+      // was sein Zeichensatz hat -- alles andere lehnt es beim Speichern ab. Die Meldung
+      // soll deshalb schon hier stehen, nicht erst als rohe Antwort des Geräts.
+      // Keine Pflicht-Beschriftung: Ein einzelner, offensichtlicher Wert braucht
       // keine Überschrift. Zu lang darf sie weiterhin nicht sein.
-      if (String(e.label || "").length > 23) {
-        this.fehler = "Die Beschriftung ist zu lang (höchstens 23 Zeichen).";
+      const label = String(e.label || "");
+      const unit = String(e.unit || "");
+      const field = String(e.field || "");
+      const fremd = " enthält ein Zeichen, das das Display nicht kennt. Möglich: Buchstaben, Ziffern, Satzzeichen, Umlaute, ß und °.";
+      if (byteLaenge(label) > 23) {
+        this.fehler = "Die Beschriftung ist zu lang (höchstens 23 Zeichen, Umlaute und ° zählen doppelt).";
         return false;
       }
-      if (String(e.unit || "").length > 15) {
-        this.fehler = "Die Einheit ist zu lang (höchstens 15 Zeichen).";
+      if (!DISPLAY_ZEICHEN.test(label)) {
+        this.fehler = "Die Beschriftung" + fremd;
+        return false;
+      }
+      if (byteLaenge(unit) > 15) {
+        this.fehler = "Die Einheit ist zu lang (höchstens 15 Zeichen, Umlaute und ° zählen doppelt).";
+        return false;
+      }
+      if (!DISPLAY_ZEICHEN.test(unit)) {
+        this.fehler = "Die Einheit" + fremd;
+        return false;
+      }
+      // Der Feldname wird nie gezeichnet: nur die Länge und keine Steuerzeichen.
+      if (byteLaenge(field) > 31) {
+        this.fehler = "Der Feldname ist zu lang (höchstens 31 Zeichen).";
+        return false;
+      }
+      if (!OHNE_STEUERZEICHEN.test(field)) {
+        this.fehler = "Der Feldname enthält ein Steuerzeichen.";
         return false;
       }
       if (Number(e.anzeige) !== 0 && !(Number(e.barMax) > Number(e.barMin))) {

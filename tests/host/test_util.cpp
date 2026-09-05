@@ -284,6 +284,26 @@ int main() {
         assert(teilungErsteKachel(240, 100, 0, 20) == 48);
     }
 
+    // --- Nicht-ASCII: nur, was der Zeichensatz des Displays hat (Grad, Umlaute, sz) ---
+    {
+        char f[32];
+        assert(utf8NachFont("42\xc2\xb0" "C", f, sizeof(f)));
+        assert((unsigned char)f[2] == 0xF8 && f[3] == 'C' && f[4] == 0);
+        assert(utf8NachFont("K\xc3\xbc" "che", f, sizeof(f)));
+        assert((unsigned char)f[1] == 0x81 && strcmp(f + 2, "che") == 0);
+        assert(utf8NachFont("\xc3\x84\xc3\x96\xc3\x9c\xc3\x9f", f, sizeof(f)) && strlen(f) == 4);
+        assert(!utf8NachFont("\xce\xa9", f, sizeof(f)));  // Omega: nicht darstellbar
+        assert(!utf8NachFont("abc", f, 3));                 // Puffer zu klein: false, aber terminiert
+        assert(f[2] == 0);
+        assert(utf8NachFont("", f, sizeof(f)) && f[0] == 0);
+        assert(fontZeichen("\xc2\xb0" "C") == 2);          // Anzeigebreite: 2 Zeichen, nicht 3 Bytes
+        assert(anzeigeTextValid("K\xc3\xbc" "che", LABEL_LEN));
+        assert(anzeigeTextValid("\xc2\xb0" "C", UNIT_LEN));
+        assert(!anzeigeTextValid("\xce\xa9", LABEL_LEN));   // abgewiesen, nicht als Muell gezeichnet
+        assert(!anzeigeTextValid("", LABEL_LEN));           // leer bleibt Sache des Aufrufers
+        assert(slotTextValid("\xce\xa9", FIELD_LEN));       // Feldname wird nie gezeichnet: bleibt erlaubt
+    }
+
     printf("OK\n");
     return 0;
 }
