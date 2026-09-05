@@ -18,6 +18,9 @@ fi
 for f in firmware.bin littlefs.bin; do
     if [ ! -f "$BUILD/$f" ]; then
         echo "FEHLER: $BUILD/$f fehlt — erst 'pio run' und 'pio run -t buildfs'."
+        echo "Inhalt des Build-Verzeichnisses:"
+        ls -la "$BUILD" 2>/dev/null || echo "  (Verzeichnis fehlt)"
+        find "$BASIS/firmware" -name '*.bin' -not -path '*/backup/*' 2>/dev/null | sed 's/^/  gefunden: /'
         exit 1
     fi
 done
