@@ -24,11 +24,13 @@ jobs:
             firmware/.pio
           key: pio-esp8266-${{ hashFiles('firmware/platformio.ini') }}
 
+      # Gepinnt auf den Stand des Entwicklungsrechners. Mit 6.2.0 raeumt jeder "pio run"
+      # das Abbild des jeweils anderen Ziels weg (firmware.bin nach buildfs, littlefs.bin
+      # nach dem Firmware-Build) -- die CI war deshalb seit der Erstveroeffentlichung rot.
+      # Fuer ein Geraet ohne Rollback soll die CI ohnehin dasselbe Abbild bauen wie der Mac.
       - name: Install PlatformIO
-        run: pip install --upgrade platformio
+        run: pip install platformio==6.1.19
 
-      # Erst das Dateisystem, dann die Firmware: In der CI (Linux, aktuelles PlatformIO)
-      # war firmware.bin nach "pio run -t buildfs" verschwunden -- lokal (6.1.19) nicht.
       - name: Build filesystem image
         run: pio run -t buildfs
         working-directory: firmware
