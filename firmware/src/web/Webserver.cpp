@@ -20,6 +20,7 @@
 #include <Arduino.h>
 #include <ESP8266WebServer.h>
 #include <LittleFS.h>
+#include <detail/mimetable.h>
 #include <functional>
 #include <Logger.h>
 #include <cstring>
@@ -32,46 +33,8 @@
 
 static constexpr size_t URI_BUF_SIZE = 192;
 static constexpr size_t PATH_BUF_SIZE = 256;
-static constexpr bool LOG_STATIC_HIT_INFO = false;
 
 namespace {
-
-struct ContentTypeMapping {
-    const char* suffix;
-    const char* mimeType;
-};
-
-constexpr const char* DEFAULT_CONTENT_TYPE = "application/octet-stream";
-constexpr const char* HTML_CONTENT_TYPE = "text/html";
-
-constexpr std::array<ContentTypeMapping, 12> CONTENT_TYPE_MAPPINGS = {{
-    {".html", HTML_CONTENT_TYPE},
-    {".htm", HTML_CONTENT_TYPE},
-    {".css", "text/css"},
-    {".js", "application/javascript"},
-    {".json", "application/json"},
-    {".png", "image/png"},
-    {".jpg", "image/jpeg"},
-    {".jpeg", "image/jpeg"},
-    {".gif", "image/gif"},
-    {".svg", "image/svg+xml"},
-    {".ico", "image/x-icon"},
-    {".txt", "text/plain"},
-}};
-
-auto hasSuffix(const char* value, const char* suffix) -> bool {
-    if (value == nullptr || suffix == nullptr) {
-        return false;
-    }
-
-    const size_t valueLen = strlen(value);
-    const size_t suffixLen = strlen(suffix);
-    if (valueLen < suffixLen) {
-        return false;
-    }
-
-    return strcmp(value + valueLen - suffixLen, suffix) == 0;
-}
 
 }  // namespace
 
@@ -95,29 +58,6 @@ void Webserver::begin() {
  * @return void
  */
 void Webserver::handleClient() { _server.handleClient(); }
-
-/**
- * @brief Register a handler for a route
- * @param uri The URI path to handle
- * @param method The HTTP method to handle
- * @param handler The function to call when the route is accessed
- *
- * @return void
- */
-void Webserver::on(const String& uri, HTTPMethod method, std::function<void()> handler) {
-    _server.on(uri.c_str(), method, [handler]() { handler(); });
-}
-
-/**
- * @brief Register a generic handler (all methods)
- * @param uri The URI path to handle
- * @param handler The function to call when the route is accessed
- *
- * @return void
- */
-void Webserver::on(const String& uri, std::function<void()> handler) {
-    _server.on(uri.c_str(), [handler]() { handler(); });
-}
 
 /**
  * @brief Kennung einer Datei fuer den Browser-Cache
@@ -201,10 +141,9 @@ void Webserver::serveStaticC(const char* uriC, const char* pathC, const char* co
 
         size_t size = f.size();
 
-        const char* contentTypeResolved = contentTypeStr;
-        if (contentTypeResolved == nullptr || contentTypeResolved[0] == '\0') {
-            contentTypeResolved = guessContentTypeC(chosenPath);
-        }
+        String contentTypeResolved = (contentTypeStr != nullptr && contentTypeStr[0] != '\0')
+                                         ? String(contentTypeStr)
+                                         : guessContentTypeC(chosenPath);
 
         char etag[ETAG_BUF_SIZE];
         baueEtag(etag, sizeof(etag), size);
@@ -218,48 +157,9 @@ void Webserver::serveStaticC(const char* uriC, const char* pathC, const char* co
         _server.streamFile(f, contentTypeResolved);
         f.close();
 
-        if (LOG_STATIC_HIT_INFO) {
-            char infoMsg[320];
-            snprintf(infoMsg, sizeof(infoMsg), "Served %s for URI: %s", chosenPath, uriC);
-            Logger::info(infoMsg, "Webserver");
-        }
     });
 }
 
-/**
- * @brief Register all files in a LittleFS directory as static routes
- * @param fsDir The LittleFS directory path
- * @param uriPrefix The URI prefix to use
- * @param contentType The content type to use for all files
- *
- * @return void
- */
-void Webserver::registerStaticDir(  // NOLINT(readability-convert-member-functions-to-static)
-    const String& fsDir, const String& uriPrefix, const String& contentType) {
-    String dirPath = fsDir;
-    if (dirPath.endsWith("/") && dirPath.length() > 1) {
-        dirPath = dirPath.substring(0, dirPath.length() - 1);
-    }
-
-    String prefix = uriPrefix;
-    if (prefix.endsWith("/") && prefix.length() > 1) {
-        prefix = prefix.substring(0, prefix.length() - 1);
-    }
-
-    if (!LittleFS.exists(dirPath)) {
-        Logger::warn((String("Static dir not found: ") + dirPath).c_str(), "Webserver");
-        return;
-    }
-
-    // Dieselbe Regel wie ueberall sonst: behalten ja, ungeprueft benutzen nein.
-    _server.serveStatic(prefix.c_str(), LittleFS, dirPath.c_str(), CACHE_RUECKFRAGEN);
-
-    String info = String("Registered static dir: ") + prefix + " -> " + dirPath;
-    if (!contentType.isEmpty()) {
-        info += String(" (ct=") + contentType + ")";
-    }
-    Logger::info(info.c_str(), "Webserver");
-}
 
 /**
  * @brief Register a generic static fallback route using onNotFound
@@ -336,22 +236,7 @@ void Webserver::registerGenericStaticFallback(  // NOLINT(readability-convert-me
         _server.streamFile(f, guessContentTypeC(fsPath));
         f.close();
 
-        if (LOG_STATIC_HIT_INFO) {
-            char infoMsg[320];
-            snprintf(infoMsg, sizeof(infoMsg), "Served %s for URI: %s", chosenPath, uriBuf);
-            Logger::info(infoMsg, "Webserver");
-        }
     });
-}
-
-/**
- * @brief Simple notFound handler registration
- * @param handler The function to call when a route is not found
- *
- * @return void
- */
-void Webserver::onNotFound(std::function<void()> handler) {
-    _server.onNotFound([handler]() { handler(); });
 }
 
 /**
@@ -361,21 +246,18 @@ void Webserver::onNotFound(std::function<void()> handler) {
  */
 auto Webserver::raw() -> ESP8266WebServer& { return _server; }
 
-auto Webserver::guessContentTypeC(const char* path) -> const char* {
+// Die Zuordnung Endung -> MIME-Typ bringt der Core schon mit (mimetable.h, dieselbe
+// Tabelle, die serveStatic benutzt). Die eigene Kopie kannte zwoelf Endungen und musste
+// bei jeder neuen von Hand nachgezogen werden.
+auto Webserver::guessContentTypeC(const char* path) -> String {
     if (path == nullptr || path[0] == '\0') {
-        return DEFAULT_CONTENT_TYPE;
+        return {mime::mimeTable[mime::none].mimeType};
     }
 
     const size_t len = strlen(path);
     if (path[len - 1] == '/') {
-        return HTML_CONTENT_TYPE;
+        return {mime::mimeTable[mime::html].mimeType};
     }
 
-    for (const auto& mapping : CONTENT_TYPE_MAPPINGS) {
-        if (hasSuffix(path, mapping.suffix)) {
-            return mapping.mimeType;
-        }
-    }
-
-    return DEFAULT_CONTENT_TYPE;
+    return mime::getContentType(String(path));
 }

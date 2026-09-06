@@ -76,14 +76,11 @@ function markiereAktiveSeite() {
   });
 }
 
+// Wird erst gerufen, wenn der Kopfbereich eingesetzt ist -- vorher lief hier ein
+// Intervall, das alle 20 ms nachsah, ob es das Element schon gibt.
 function setHeaderTitle(title) {
-  const interval = setInterval(() => {
-    const h1 = document.getElementById("header-title");
-    if (h1) {
-      h1.textContent = title;
-      clearInterval(interval);
-    }
-  }, 20);
+  const h1 = document.getElementById("header-title");
+  if (h1) h1.textContent = title;
 }
 
 document.addEventListener("DOMContentLoaded", () => {

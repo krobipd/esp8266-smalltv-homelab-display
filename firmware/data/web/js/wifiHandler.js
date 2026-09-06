@@ -28,16 +28,11 @@ function wifiHandler() {
                   : rssi > -70
                     ? "▮▮▯▯"
                     : "▮▯▯▯";
-            // ESP8266-Verschluesselungstypen: 7 = offen (ENC_TYPE_NONE), alles
-            // andere ist gesichert. "enc !== 0" war falsch herum gedacht --
-            // damit galt ausgerechnet ein offenes Netz als verschluesselt.
-            const secured = typeof n.enc === "number" ? n.enc !== 7 : !!n.enc;
             return {
               ssid: n.ssid || "",
               rssi,
               rssiDisplay: rssi + " dBm",
               bars,
-              secured,
             };
           })
           .sort((a, b) => b.rssi - a.rssi);
@@ -53,21 +48,11 @@ function wifiHandler() {
       // Require the user to provide the password explicitly
       this.password = "";
       this.statusMsg = "Zum Verbinden das WLAN-Passwort eingeben";
-      // focus password input if secured
+      // Eingabefeld fokussieren -- das Passwort wird immer verlangt.
       setTimeout(() => {
         const pw = document.getElementById("password");
         if (pw) pw.focus();
       }, 50);
-    },
-
-    async quickConnect(net) {
-      this.selectNetwork(net);
-      if (!net.secured) {
-        // try connect without password
-        await this.connect();
-      } else {
-        this.statusMsg = "WLAN-Passwort eingeben und verbinden";
-      }
     },
 
     async connect() {

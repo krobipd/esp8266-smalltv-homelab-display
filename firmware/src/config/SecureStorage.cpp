@@ -228,24 +228,6 @@ auto SecureStorage::put(const char* key, const char* value) -> bool {
     return flushToEEPROM();
 }
 
-/**
- * @brief Remove a key from the NVS store
- *
- * @param key The key to remove
- *
- * @return true on success false otherwise
- */
-auto SecureStorage::remove(const char* key) -> bool {
-    if (!_ready) {
-        if (!begin()) {
-            return false;
-        }
-    }
-
-    _doc.remove(key);
-
-    return flushToEEPROM();
-}
 
 /**
  * @brief Retrieve a string value from NVS

@@ -55,7 +55,6 @@ static void otaHandleEnd(HTTPUpload& upload, int mode);
 static void otaHandleAborted(HTTPUpload& upload, int mode);
 
 static constexpr int WIFI_CONNECT_TIMEOUT_MS = 15000;
-static constexpr size_t NTP_CONFIG_DOC_SIZE = 512;
 static constexpr int BEARER_LEN = 7;
 
 /**
@@ -251,10 +250,13 @@ void handleNtpSync(Webserver* webserver) {
         return;
     }
 
-    bool syncOk = ntpClient->syncNow();
+    // Nur anstossen, nicht abwarten: syncNow() blockiert bis zu 5 Sekunden, in denen
+    // weder das Display noch die Abrufe noch der Webserver etwas tun. loop() fuehrt den
+    // Versuch zu Ende, das Ergebnis holt die Seite von /ntp/status (N25).
+    ntpClient->syncAnstossen();
 
     JsonDocument doc;
-    doc["status"] = syncOk ? "ok" : "error";
+    doc["status"] = "gestartet";
     doc["lastStatus"] = ntpClient->lastStatus();
     doc["lastSyncTime"] = ntpClient->lastSyncTime();
     sendeJson(webserver, HTTP_CODE_OK, doc);

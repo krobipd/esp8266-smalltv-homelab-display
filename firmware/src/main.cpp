@@ -164,7 +164,6 @@ void setup() {
         Logger::warn("Enabled legacy OTA route because LittleFS is unavailable or empty", "Global");
     } else {
         webserver->serveStaticC("/", "/web/index.html", "text/html");
-        webserver->serveStaticC("/config.json", "/config.json", "application/json");
         webserver->registerGenericStaticFallback("/web", true);
     }
 

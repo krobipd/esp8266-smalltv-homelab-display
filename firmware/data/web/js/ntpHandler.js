@@ -20,14 +20,17 @@ function ntpHandler() {
         });
     },
 
+    // Das Gerät stößt den Abgleich nur an und antwortet sofort (es würde sonst bis zu
+    // fünf Sekunden stillstehen). Das Ergebnis steht kurz darauf in /ntp/status —
+    // deshalb wird zweimal nachgefragt statt aus der Antwort geraten.
     syncNow() {
       this.loading = true;
+      this.lastStatus = "Abgleich läuft …";
       apiFetch("/api/v1/ntp/sync", { method: "POST" })
         .then((r) => r.json())
-        .then((data) => {
-          this.lastStatus = data.lastStatus || "";
-          this.lastSyncTime = data.lastSyncTime || 0;
-          this.lastOk = data.status === "ok";
+        .then(() => {
+          setTimeout(() => this.fetchStatus(), 2000);
+          setTimeout(() => this.fetchStatus(), 8000);
         })
         .catch((err) => {
           this.lastStatus = "Synchronisierung fehlgeschlagen";

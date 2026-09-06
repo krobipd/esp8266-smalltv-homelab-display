@@ -69,7 +69,6 @@ void Logger::log(LogLevel level, const char* message, const char* className) {
  * @param message The debug message to log
  * @param className optional class name for context
  */
-void Logger::debug(const char* message, const char* className) { log(LOG_DEBUG, message, className); }
 
 /**
  * @brief Logs an info message
@@ -95,16 +94,6 @@ void Logger::warn(const char* message, const char* className) { log(LOG_WARN, me
  */
 void Logger::error(const char* message, const char* className) { log(LOG_ERROR, message, className); }
 
-/**
- * @brief Print the current local time in [HH:MM:SS]
- */
-void Logger::printTime() {
-    char buffer[20];
-    std::time_t t = std::time(nullptr);
-    std::tm* now = std::localtime(&t);
-    snprintf(buffer, sizeof(buffer), "[%02d:%02d:%02d]", now->tm_hour, now->tm_min, now->tm_sec);
-    Serial.print(buffer);
-}
 
 /**
  * @brief Add a log entry to the circular buffer

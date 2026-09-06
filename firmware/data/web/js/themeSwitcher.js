@@ -34,28 +34,22 @@ function themeSwitcher() {
     setTimeout(() => {
       document.documentElement.setAttribute("data-theme", nextTheme);
       localStorage.setItem("theme", nextTheme);
-      if (window.Alpine && Alpine.store && Alpine.store.themeSwitcher) {
-        Alpine.store.themeSwitcher.applyScheme();
-      } else if (
-        window.themeSwitcherInstance &&
-        typeof window.themeSwitcherInstance.applyScheme === "function"
-      ) {
-        window.themeSwitcherInstance.applyScheme();
+      // Frueher standen hier zwei Fallbacks auf Alpine.store.themeSwitcher und
+      // window.themeSwitcherInstance -- beides gibt es in diesem Projekt nicht,
+      // gelaufen ist immer nur dieser Zweig.
+      const { mainCircle, sunRays, moon, moonCut, rays } = getSVGElements();
+      if (nextTheme === "light") {
+        mainCircle && (mainCircle.style.opacity = 1);
+        sunRays && (sunRays.style.opacity = 1);
+        rays && rays.forEach((ray) => (ray.style.opacity = 1));
+        moon && (moon.style.display = "none");
+        moonCut && moonCut.setAttribute("cx", 24);
       } else {
-        const { mainCircle, sunRays, moon, moonCut, rays } = getSVGElements();
-        if (nextTheme === "light") {
-          mainCircle && (mainCircle.style.opacity = 1);
-          sunRays && (sunRays.style.opacity = 1);
-          rays && rays.forEach((ray) => (ray.style.opacity = 1));
-          moon && (moon.style.display = "none");
-          moonCut && moonCut.setAttribute("cx", 24);
-        } else {
-          mainCircle && (mainCircle.style.opacity = 0);
-          sunRays && (sunRays.style.opacity = 0);
-          rays && rays.forEach((ray) => (ray.style.opacity = 0));
-          moon && (moon.style.display = "");
-          moonCut && moonCut.setAttribute("cx", 16);
-        }
+        mainCircle && (mainCircle.style.opacity = 0);
+        sunRays && (sunRays.style.opacity = 0);
+        rays && rays.forEach((ray) => (ray.style.opacity = 0));
+        moon && (moon.style.display = "");
+        moonCut && moonCut.setAttribute("cx", 16);
       }
       overlay.style.transition = "opacity 0.3s";
       overlay.style.opacity = "0";

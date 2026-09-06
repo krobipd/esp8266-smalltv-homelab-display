@@ -34,7 +34,6 @@ static constexpr size_t LOG_ENTRY_MAX_LEN = 96;
 class Logger {
    public:
     static void log(LogLevel level, const char* message, const char* className = nullptr);
-    static void debug(const char* message, const char* className = nullptr);
     static void info(const char* message, const char* className = nullptr);
     static void warn(const char* message, const char* className = nullptr);
     static void error(const char* message, const char* className = nullptr);
@@ -45,7 +44,6 @@ class Logger {
     static void clearLogs();
 
    private:
-    static void printTime();
     static const char* levelToString(LogLevel level);
     static void addToBuffer(const char* entry);
     static void ensureBufferAllocated();

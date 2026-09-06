@@ -465,7 +465,8 @@ class Handler(BaseHTTPRequestHandler):
         if p == "/api/v1/ntp/sync":
             global NTP_LETZTER_SYNC
             NTP_LETZTER_SYNC = int(time.time())
-            return self._json(200, {"status": "ok", "lastStatus": "Synced",
+            # Wie handleNtpSync(): nur angestossen, das Ergebnis holt /ntp/status.
+            return self._json(200, {"status": "gestartet", "lastStatus": "Synced",
                                     "lastSyncTime": NTP_LETZTER_SYNC})
         if p == "/api/v1/ntp/config":
             return self._ntp_config()

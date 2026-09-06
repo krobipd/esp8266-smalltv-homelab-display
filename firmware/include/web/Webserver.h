@@ -55,18 +55,14 @@ class Webserver {
     explicit Webserver(uint16_t port = 80);
     void begin();
     void handleClient();
-    void on(const String& uri, HTTPMethod method, std::function<void()> handler);
-    void on(const String& uri, std::function<void()> handler);
     void serveStaticC(const char* uriC, const char* pathC, const char* contentTypeC = nullptr);
-    void registerStaticDir(const String& fsDir, const String& uriPrefix, const String& contentType);
     void registerGenericStaticFallback(const String& fsBasePath = "/web", bool excludeRoot = true);
-    void onNotFound(std::function<void()> handler);
     ESP8266WebServer& raw();
 
    private:
     ESP8266WebServer _server;
 
-    static const char* guessContentTypeC(const char* path);
+    static String guessContentTypeC(const char* path);
 
     /// Kennung einer Datei fuer den Browser-Cache (Firmware-Version + Dateigroesse).
     static void baueEtag(char* out, size_t outSize, size_t dateiGroesse);

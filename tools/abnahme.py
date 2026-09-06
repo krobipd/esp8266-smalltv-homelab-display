@@ -131,13 +131,20 @@ def probe_zeit(g):
     frist = time.time() + 120
     while time.time() < frist:
         try:
-            _, _, st = g.sende("/api/v1/ntp/sync", {}, timeout=20)
+            g.sende("/api/v1/ntp/sync", {}, timeout=20)
+        except Exception:  # noqa: BLE001
+            pass
+        # Ab v0.4.0 stoesst /ntp/sync nur an und antwortet "gestartet"; das Ergebnis
+        # steht in /ntp/status. Ueber diesen Weg gemessen gilt die Probe fuer beide
+        # Fassungen.
+        time.sleep(5)
+        try:
+            _, _, st = g.hole("/api/v1/ntp/status")
         except Exception:  # noqa: BLE001
             st = {}
-        if st.get("status") == "ok" and int(st.get("lastSyncTime") or 0) >= start:
+        if st.get("lastOk") and int(st.get("lastSyncTime") or 0) >= start:
             ok = True
             break
-        time.sleep(5)
     melde(ok, "Zeit: neuer Abgleich mit %s %s" % (server_alt or "pool.ntp.org",
           "gelungen, Zeitstempel frisch" if ok else "in 120 s nicht gelungen"))
 

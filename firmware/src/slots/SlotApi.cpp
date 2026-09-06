@@ -230,9 +230,10 @@ void handleSlotsTest(Webserver* webserver) {
     JsonDocument doc;
     doc["ok"] = ok;
     doc["httpStatus"] = status;
-    // Als const char*: ArduinoJson speichert den Zeiger statt einer Kopie -- der
-    // Puffer ist statisch und lebt laenger als die Antwort. Die Kopie kostete den
-    // Kilobyte-Inhalt sonst dreifach (Puffer + Dokument + Ausgabe-String).
+    // ArduinoJson 7 KOPIERT auch einen const char* ins Dokument (anders als Fassung 6,
+    // auf die dieser Kommentar frueher baute). Die Vorschau liegt also kurz doppelt im
+    // Heap -- bewusst hingenommen: KOERPER_MAX ist ein Kilobyte, und der Assistent
+    // laeuft nur, wenn ein Mensch auf "Testen" drueckt.
     doc["preview"] = ok ? static_cast<const char*>(vorschau) : "";
     if (!ok) {
         doc["error"] = fehler;

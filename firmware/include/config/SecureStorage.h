@@ -28,7 +28,6 @@ class SecureStorage {
     SecureStorage(size_t eepromSize = 2048);
     bool begin();
     bool put(const char* key, const char* value);
-    bool remove(const char* key);
     String get(const char* key, const char* defaultValue = nullptr);
 
     // Set the public salt (should be called before begin())
