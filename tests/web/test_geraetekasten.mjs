@@ -48,7 +48,11 @@ pruefe(k.geraetInfo.length === 0, "leerer Zustand ergibt Zeilen: " + JSON.string
 // --- Vollstaendig ---
 k.geraet = { version: "v0.5.2", freeHeap: 15432, heapFrag: 14, uptimeSec: 627, rssi: -58 };
 k.netz = { connected: true, ssid: "Heimnetz", ip: "192.0.2.10" };
-k.zeit = { lastOk: true, lastStatus: "Synchronisiert", lastSyncTime: 1788697149 };
+k.zeit = {
+  lastOk: true,
+  lastStatus: "Synchronisiert: 2026-09-06 14:19:09",
+  lastSyncTime: 1788697149,
+};
 k.zone = "CET-1CEST,M3.5.0,M10.5.0/3";
 k.config = {
   layout: [2, 2, 2, 2],
@@ -63,8 +67,19 @@ pruefe(feld("Adresse") === "192.0.2.10", "Adresse falsch: " + feld("Adresse"));
 pruefe(feld("WLAN") === "Heimnetz, -58 dBm", "WLAN falsch: " + feld("WLAN"));
 pruefe(feld("Firmware") === "v0.5.2", "Firmware falsch: " + feld("Firmware"));
 pruefe(feld("Läuft seit") === "10 min", "Laufzeit falsch: " + feld("Läuft seit"));
-pruefe(/^\d{1,2}:\d{2} \(MEZ\/MESZ\)$/.test(feld("Uhr gestellt")),
-       "Uhrzeit falsch: " + feld("Uhr gestellt"));
+// Die Uhrzeit MUSS die des Geraets sein, nicht die des Browsers: Sonst stuende hier die
+// Zeit des Betrachters mit dem Zonen-Kuerzel des Geraets dahinter. Genau daran ist die
+// erste Fassung in der CI gescheitert (dort laeuft UTC -- "12:19 PM").
+//
+// Der Zeitpunkt wird deshalb hier gesetzt, nicht gerechnet: heute nur die Uhrzeit,
+// an einem anderen Tag mit Datum davor.
+const heuteIso = new Date().toISOString().slice(0, 10);
+k.zeit = { lastOk: true, lastStatus: `Synchronisiert: ${heuteIso} 14:19:09`, lastSyncTime: 1 };
+pruefe(feld("Uhr gestellt") === "14:19 (MEZ/MESZ)",
+       "Uhrzeit von heute falsch: " + feld("Uhr gestellt"));
+k.zeit = { lastOk: true, lastStatus: "Synchronisiert: 2020-01-02 07:05:00", lastSyncTime: 1 };
+pruefe(feld("Uhr gestellt") === "2020-01-02 07:05 (MEZ/MESZ)",
+       "aeltere Zeit ohne Datum: " + feld("Uhr gestellt"));
 pruefe(feld("Speicher frei") === "15,1 KB (14 % fragmentiert)",
        "Speicher falsch: " + feld("Speicher frei"));
 pruefe(feld("Werte") === "2 von 12", "Werte falsch: " + feld("Werte"));
@@ -80,9 +95,17 @@ pruefe(feld("Adresse") === "192.0.2.10" && feld("WLAN") === undefined,
        "leere SSID ergibt trotzdem eine WLAN-Zeile");
 
 // --- Ein fehlgeschlagener Abgleich wird benannt, nicht verschwiegen ---
-k.zeit = { lastOk: false, lastSyncTime: 1788697149 };
+k.zeit = { lastOk: false, lastStatus: "Synchronisiert: 2026-09-06 14:19:09",
+           lastSyncTime: 1788697149 };
 pruefe(/fehlgeschlagen/.test(feld("Uhr gestellt")),
        "fehlgeschlagener Abgleich wird nicht genannt: " + feld("Uhr gestellt"));
+// Ohne auswertbare Meldung bleibt nur die Aussage, dass es nicht geklappt hat.
+k.zeit = { lastOk: false, lastStatus: "kein Netzwerk", lastSyncTime: 1788697149 };
+pruefe(feld("Uhr gestellt") === "fehlgeschlagen",
+       "ohne Zeitangabe falsch: " + feld("Uhr gestellt"));
+k.zeit = { lastOk: true, lastStatus: "Synchronisierung laeuft", lastSyncTime: 1788697149 };
+pruefe(feld("Uhr gestellt") === undefined,
+       "ohne Zeitangabe und ohne Fehler darf keine Zeile stehen: " + feld("Uhr gestellt"));
 
 // --- Laufzeit in allen drei Stufen ---
 pruefe(k.dauerText(400) === "6 min", "Minuten falsch: " + k.dauerText(400));
@@ -98,4 +121,4 @@ pruefe(k.zonenName() === "UTC", "UTC falsch: " + k.zonenName());
 k.zone = "";
 pruefe(k.zonenName() === "", "leere Zone ergibt Text: " + k.zonenName());
 
-console.log("Geraetekasten: 18x OK");
+console.log("Geraetekasten: 21x OK");

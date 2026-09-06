@@ -236,13 +236,22 @@ function slotsHandler() {
         zeilen.push({ name: "Läuft seit", wert: this.dauerText(g.uptimeSec) });
       }
       if (this.zeit && this.zeit.lastSyncTime) {
-        const d = new Date(Number(this.zeit.lastSyncTime) * 1000);
-        const uhr = d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+        // Die Uhrzeit kommt aus der Meldung des Geräts ("Synchronisiert: 2026-09-06
+        // 14:19:09") und steht damit in DESSEN Zeitzone. Aus dem Zeitstempel gerechnet
+        // stünde hier die Zeit des Browsers — mit dem Kürzel des Geräts dahinter, also
+        // schlicht falsch, sobald beide in verschiedenen Zonen stehen.
+        const treffer = String(this.zeit.lastStatus || "").match(/(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2})/);
         const zone = this.zonenName();
-        zeilen.push({
-          name: "Uhr gestellt",
-          wert: uhr + (zone ? ` (${zone})` : "") + (this.zeit.lastOk ? "" : " — fehlgeschlagen"),
-        });
+        const heute = new Date().toISOString().slice(0, 10);
+        const uhr = treffer ? (treffer[1] === heute ? treffer[2] : `${treffer[1]} ${treffer[2]}`) : "";
+        if (uhr) {
+          zeilen.push({
+            name: "Uhr gestellt",
+            wert: uhr + (zone ? ` (${zone})` : "") + (this.zeit.lastOk ? "" : " — fehlgeschlagen"),
+          });
+        } else if (!this.zeit.lastOk) {
+          zeilen.push({ name: "Uhr gestellt", wert: "fehlgeschlagen" });
+        }
       }
       if (g && g.freeHeap !== undefined) {
         const frag = Number(g.heapFrag) || 0;
