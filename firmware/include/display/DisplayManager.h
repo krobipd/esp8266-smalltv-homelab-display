@@ -36,9 +36,23 @@ static constexpr int THREE_LINES_SPACE = 60;
 class DisplayManager {
    public:
     static void begin();
-    static void setRotation(uint8_t rotation, String currentIP);
+    static void setRotation(uint8_t rotation);
     static Arduino_GFX* getGfx();
     static void drawStartup(String currentIP);
+
+    /// Eine Meldung ueber die ganze Flaeche: bis zu zwei Zeilen und wahlweise ein
+    /// Fortschrittsbalken (fortschritt < 0 = keiner). Vorher baute jede Stelle das
+    /// aus drawTextWrapped und drawLoadingBar selbst zusammen -- mit eigenen Kopien
+    /// der Koordinaten, die zwischen main.cpp, WiFiManager und Api auseinanderliefen.
+    static void meldung(const char* zeile1, const char* zeile2, float fortschritt);
+
+    /// true, wenn seit dem letzten Aufruf jemand ausserhalb der Kachelanzeige auf das
+    /// Display geschrieben hat (Meldung, Startbild, Drehung). Die Kachelanzeige holt
+    /// das in ihrer Schleife ab und zeichnet dann alles neu -- sonst bliebe die fremde
+    /// Zeichnung stehen, bis sich zufaellig ein Wert aendert (A2). Vorher rief jede
+    /// dieser Stellen von Hand SlotDisplay::neuZeichnen(), und eine neue Stelle konnte
+    /// es vergessen.
+    static bool fremdZeichnungAbholen();
     static void drawTextWrapped(int16_t xPos, int16_t yPos, const String& text, uint8_t textSize, uint16_t fgColor,
                                 uint16_t bgColor, bool clearBg);
     static void drawLoadingBar(float progress, int yPos = 180, int barWidth = 200, int barHeight = 20,

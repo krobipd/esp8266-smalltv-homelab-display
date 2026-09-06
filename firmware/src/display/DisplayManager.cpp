@@ -37,6 +37,9 @@ static Arduino_ST7789 g_lcd = Arduino_ST7789(&g_lcdBus, -1, 0, true, LCD_W, LCD_
 static constexpr uint32_t LCD_HARDWARE_RESET_DELAY_MS = 120;
 static constexpr uint32_t LCD_BEGIN_DELAY_MS = 10;
 static constexpr int16_t DISPLAY_PADDING = 10;
+// Gesetzt von jeder Zeichnung ausserhalb der Kachelanzeige; diese holt es in ihrer
+// Schleife ab (fremdZeichnungAbholen) und malt dann alles neu.
+static bool g_fremdGezeichnet = false;
 static constexpr int16_t DISPLAY_INFO_Y = 100;
 
 static constexpr int WRAP_MAX_CHARS = 128;
@@ -553,11 +556,36 @@ auto DisplayManager::begin() -> void { lcdEnsureInit(); }
  *
  * @return void
  */
-auto DisplayManager::setRotation(uint8_t rotation, String currentIP) -> void {
+auto DisplayManager::setRotation(uint8_t rotation) -> void {
     g_lcd.setRotation(rotation);
-    DisplayManager::drawStartup(currentIP);
-
+    // Kein Startbild mehr: Die Kachelanzeige merkt an der Fremdzeichnung, dass sie neu
+    // malen muss -- und ihre Kacheln sind nach einer Drehung das, was der Nutzer sehen
+    // will, nicht drei Sekunden Farbflaechen.
+    g_fremdGezeichnet = true;
     Logger::info(("Rotation set to " + String(rotation)).c_str(), "DisplayManager");
+}
+
+auto DisplayManager::fremdZeichnungAbholen() -> bool {
+    const bool war = g_fremdGezeichnet;
+    g_fremdGezeichnet = false;
+    return war;
+}
+
+auto DisplayManager::meldung(const char* zeile1, const char* zeile2, float fortschritt) -> void {
+    int constexpr textY = 60;
+    int constexpr balkenY = 110;
+
+    if (zeile1 != nullptr && zeile1[0] != 0) {
+        DisplayManager::drawTextWrapped(DISPLAY_PADDING, textY, zeile1, 2, LCD_WHITE, LCD_BLACK, true);
+    }
+    if (zeile2 != nullptr && zeile2[0] != 0) {
+        DisplayManager::drawTextWrapped(DISPLAY_PADDING, textY + ONE_LINE_SPACE, zeile2, 2, LCD_WHITE,
+                                        LCD_BLACK, true);
+    }
+    if (fortschritt >= 0.0F) {
+        DisplayManager::drawLoadingBar(fortschritt, balkenY);
+    }
+    g_fremdGezeichnet = true;
 }
 
 /**
@@ -566,21 +594,14 @@ auto DisplayManager::setRotation(uint8_t rotation, String currentIP) -> void {
  * @return void
  */
 auto DisplayManager::drawStartup(String currentIP) -> void {
-    int constexpr rgbDelayMs = 1000;
-
-    g_lcd.fillScreen(LCD_RED);
-    delay(rgbDelayMs);
-    g_lcd.fillScreen(LCD_GREEN);
-    delay(rgbDelayMs);
-    g_lcd.fillScreen(LCD_BLUE);
-    delay(rgbDelayMs);
-
+    // Kein RGB-Testbild mehr: Es kostete drei Sekunden bei jedem Start und sagte nur,
+    // dass das Display Farben kann. Die Adresse ist das, was der Nutzer hier braucht.
     g_lcd.fillScreen(LCD_BLACK);
 
     int constexpr titleY = 10;
     int constexpr fontSize = 2;
 
-    DisplayManager::drawTextWrapped(DISPLAY_PADDING, titleY, "GeekMagic Open Firmware", fontSize, LCD_WHITE, LCD_BLACK,
+    DisplayManager::drawTextWrapped(DISPLAY_PADDING, titleY, "SmallTV Homelab-Display", fontSize, LCD_WHITE, LCD_BLACK,
                                     false);
     DisplayManager::drawTextWrapped(DISPLAY_PADDING, titleY + THREE_LINES_SPACE, String(PROJECT_VER_STR), fontSize,
                                     LCD_WHITE, LCD_BLACK, false);
@@ -597,6 +618,7 @@ auto DisplayManager::drawStartup(String currentIP) -> void {
 
     yield();
 
+    g_fremdGezeichnet = true;
     Logger::info("Startup screen drawn", "DisplayManager");
 }
 

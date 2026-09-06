@@ -523,6 +523,15 @@ void SlotDisplay::update() {
         return;
     }
 
+    // Hat jemand ausserhalb dieser Anzeige auf das Display geschrieben (Meldung,
+    // Startbild, Drehung)? Dann steht dort etwas Fremdes, das nur ein vollstaendiges
+    // Neuzeichnen wieder loswird -- sonst bliebe es stehen, bis sich zufaellig ein Wert
+    // aendert (A2). Ganz am Anfang abgeholt, damit es auch waehrend des Startbilds
+    // gemerkt wird und nicht verlorengeht.
+    if (DisplayManager::fremdZeichnungAbholen()) {
+        g_allesNeu = true;
+    }
+
     // Das Startbild lesbar lassen (Adresse!). Die Zeit zaehlt ab hier: setup() malt es
     // als Letztes, der erste Schleifendurchlauf kommt unmittelbar danach.
     if (g_startbildSteht) {

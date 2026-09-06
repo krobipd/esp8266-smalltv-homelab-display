@@ -24,9 +24,6 @@
 #include "display/DisplayManager.h"
 #include "smalltv_util.h"  // elapsed(): wrap-sichere Zeitvergleiche
 
-static constexpr int LOADING_BAR_TEXT_X = 20;
-static constexpr int LOADING_BAR_TEXT_Y = 60;
-static constexpr int LOADING_BAR_Y = 110;
 static constexpr int LOADING_DELAY_MS = 1000;
 
 /**
@@ -125,9 +122,7 @@ auto WiFiManager::connectToNetwork(const char* ssid, const char* pass, uint32_t 
     int step = 0;
 
     DisplayManager::clearScreen();
-    DisplayManager::drawTextWrapped(LOADING_BAR_TEXT_X, LOADING_BAR_TEXT_Y, "Wifi connecting...", 2, LCD_WHITE,
-                                    LCD_BLACK, true);
-    DisplayManager::drawLoadingBar(static_cast<float>(step) / static_cast<float>(total_steps), LOADING_BAR_Y);
+    DisplayManager::meldung("Verbinde mit WLAN", ssid, static_cast<float>(step) / static_cast<float>(total_steps));
 
     // Im AP-Modus laeuft der Versuch NEBEN dem AP (AP_STA): Wer gerade ueber das
     // Einrichtungsnetz verbunden ist, soll die Antwort noch bekommen.
@@ -138,7 +133,7 @@ auto WiFiManager::connectToNetwork(const char* ssid, const char* pass, uint32_t 
 
     while (WiFi.status() != WL_CONNECTED && (millis() - start) < timeoutMs) {
         delay(CONNECTION_DELAY_MS);
-        DisplayManager::drawLoadingBar(static_cast<float>(step) / static_cast<float>(total_steps), LOADING_BAR_Y);
+        DisplayManager::meldung(nullptr, nullptr, static_cast<float>(step) / static_cast<float>(total_steps));
     }
 
     step++;
@@ -155,21 +150,13 @@ auto WiFiManager::connectToNetwork(const char* ssid, const char* pass, uint32_t 
         _apMode = false;
 
         Logger::info(String("Connected: " + WiFi.localIP().toString()).c_str(), "WiFiManager");
-        DisplayManager::drawTextWrapped(LOADING_BAR_TEXT_X, LOADING_BAR_TEXT_Y, "Connected !", 2, LCD_WHITE, LCD_BLACK,
-                                        true);
-        DisplayManager::drawTextWrapped(LOADING_BAR_TEXT_X, LOADING_BAR_TEXT_Y + ONE_LINE_SPACE,
-                                        "IP: " + WiFi.localIP().toString(), 2, LCD_WHITE, LCD_BLACK, true);
-
-        DisplayManager::drawLoadingBar(1.0F, LOADING_BAR_Y);
+        DisplayManager::meldung("Verbunden", WiFi.localIP().toString().c_str(), 1.0F);
 
         return true;
     }
 
-    DisplayManager::drawTextWrapped(LOADING_BAR_TEXT_X, LOADING_BAR_TEXT_Y, "Failed to connect!", 2, LCD_WHITE,
-                                    LCD_BLACK, true);
+    DisplayManager::meldung("Keine Verbindung", ssid, 1.0F);
     Logger::warn("Failed to connect to WiFi", "WiFiManager");
-
-    DisplayManager::drawLoadingBar(1.0F, LOADING_BAR_Y);
 
     if (!_apMode && !_staSsid.empty()) {
         // Das Geraet hing im Heimnetz: dorthin zurueck statt in den AP. Ein Tippfehler

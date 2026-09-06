@@ -28,7 +28,6 @@
 #include "web/antwort.h"
 #include "display/DisplayManager.h"
 #include "slots/SlotApi.h"
-#include "slots/SlotDisplay.h"
 
 #include "config/ConfigManager.h"
 #include "wireless/WiFiManager.h"
@@ -49,10 +48,6 @@ static volatile bool otaCancelRequested = false;
 // zwei Antworten auf eine Anfrage hinaus.
 static bool otaZugangAbgelehnt = false;
 static size_t otaTotal = 0;
-
-static constexpr int OTA_TEXT_X_OFFSET = 50;
-static constexpr int OTA_TEXT_Y_OFFSET = 80;
-static constexpr int OTA_LOADING_Y_OFFSET = 110;
 
 static void otaHandleStart(Webserver* webserver, HTTPUpload& upload, int mode);
 static void otaHandleWrite(HTTPUpload& upload, int mode);
@@ -358,14 +353,8 @@ void handleDisplayRotationSet(Webserver* webserver) {
     auto newRotation = static_cast<uint8_t>(rotation);
     configManager.setLCDRotation(newRotation);
 
-    String currentIP = "unknown";
-    if (wifiManager != nullptr) {
-        currentIP = wifiManager->getIP().toString();
-    }
-    DisplayManager::setRotation(newRotation, currentIP);
-    // Die Basis hat das Startbild gemalt -- die Kachelanzeige muss das erfahren, sonst
-    // bleibt es stehen, bis sich zufaellig ein Wert aendert (A2).
-    SlotDisplay::neuZeichnen();
+    // Die Kachelanzeige merkt die Drehung an der Fremdzeichnung und malt neu (A2).
+    DisplayManager::setRotation(newRotation);
 
     if (!configManager.save()) {
         sendeFehlerStatus(webserver, HTTP_CODE_INTERNAL_ERROR, "Speichern fehlgeschlagen");
@@ -492,8 +481,6 @@ void handleWifiConnect(Webserver* webserver) {
     if (wifiManager != nullptr) {
         connectOk = wifiManager->connectToNetwork(ssid, password, WIFI_CONNECT_TIMEOUT_MS);
     }
-    // "Wifi connecting..." bzw. "Failed to connect!" stehen jetzt auf dem Display (A2).
-    SlotDisplay::neuZeichnen();
 
     JsonDocument resp;
     resp["status"] = connectOk ? "connected" : "error";
@@ -540,9 +527,7 @@ static void otaHandleStart(Webserver* webserver, HTTPUpload& upload, int mode) {
     otaTotal = static_cast<size_t>(upload.contentLength);
 
     DisplayManager::clearScreen();
-    DisplayManager::drawTextWrapped(OTA_TEXT_X_OFFSET, OTA_TEXT_Y_OFFSET, "Uploading...", 2, LCD_WHITE, LCD_BLACK,
-                                    true);
-    DisplayManager::drawLoadingBar(0.0F, OTA_LOADING_Y_OFFSET);
+    DisplayManager::meldung("Update laeuft", mode == U_FS ? "Oberflaeche" : "Firmware", 0.0F);
 
     int constexpr security_space = 0x1000;
     u_int constexpr bin_mask = 0xFFFFF000;
@@ -612,10 +597,8 @@ static void otaHandleWrite(HTTPUpload& upload, int mode) {
             otaInProgress = false;
             Logger::error((String("OTA abgelehnt: ") + otaStatus).c_str(), "API::OTA");
 
-            DisplayManager::drawTextWrapped(OTA_TEXT_X_OFFSET, OTA_TEXT_Y_OFFSET, "Abgelehnt", 2,
-                                            LCD_WHITE, LCD_BLACK, true);
-            DisplayManager::drawLoadingBar(0.0F, OTA_LOADING_Y_OFFSET);
-            SlotDisplay::neuZeichnen();  // die Meldung steht in der Oberflaeche (A2)
+            // Die Kachelanzeige holt die Fremdzeichnung von selbst ab (A2).
+            DisplayManager::meldung("Update abgelehnt", "", -1.0F);
             return;
         }
     }
@@ -631,11 +614,7 @@ static void otaHandleWrite(HTTPUpload& upload, int mode) {
             otaInProgress = false;
             Logger::warn("OTA canceled by user", "API::OTA");
 
-            DisplayManager::drawTextWrapped(OTA_TEXT_X_OFFSET, OTA_TEXT_Y_OFFSET, "Canceled", 2, LCD_WHITE, LCD_BLACK,
-                                            true);
-            DisplayManager::drawLoadingBar(0.0F, OTA_LOADING_Y_OFFSET);
-            SlotDisplay::neuZeichnen();  // (A2)
-
+            DisplayManager::meldung("Update abgebrochen", "", -1.0F);
             return;
         }
 
@@ -652,7 +631,7 @@ static void otaHandleWrite(HTTPUpload& upload, int mode) {
             progress = static_cast<float>(otaSize) / static_cast<float>(otaTotal);
         }
 
-        DisplayManager::drawLoadingBar(progress, OTA_LOADING_Y_OFFSET);
+        DisplayManager::meldung(nullptr, nullptr, progress);
     }
 }
 
@@ -688,9 +667,7 @@ static void otaHandleEnd(HTTPUpload& /*upload*/, int mode) {
             }
             Logger::info(otaStatus.c_str(), "API::OTA");
 
-            DisplayManager::drawLoadingBar(1.0F, OTA_LOADING_Y_OFFSET);
-            DisplayManager::drawTextWrapped(OTA_TEXT_X_OFFSET, OTA_TEXT_Y_OFFSET, "Success!", 2, LCD_WHITE, LCD_BLACK,
-                                            true);
+            DisplayManager::meldung("Update fertig", "Neustart ...", 1.0F);
         } else {
             otaError = true;
             otaStatus = Update.getErrorString();
@@ -715,9 +692,7 @@ static void otaHandleAborted(HTTPUpload& /*upload*/, int mode) {
     otaInProgress = false;
     otaCancelRequested = false;
 
-    DisplayManager::drawTextWrapped(OTA_TEXT_X_OFFSET, OTA_TEXT_Y_OFFSET, "Aborted", 2, LCD_WHITE, LCD_BLACK, true);
-    DisplayManager::drawLoadingBar(0.0F, OTA_LOADING_Y_OFFSET);
-    SlotDisplay::neuZeichnen();  // (A2)
+    DisplayManager::meldung("Update abgebrochen", "", -1.0F);
 }
 
 /**
