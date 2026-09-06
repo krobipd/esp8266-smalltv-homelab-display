@@ -103,6 +103,7 @@ def etag_passt(kopfzeile, etag):
             return True
     return False
 
+START_ZEIT = time.time()
 MAX_SLOTS = 12
 # Was das Display zeichnen kann (Firmware smalltv_util.h, FONT_UMSETZUNG): ASCII plus
 # ° ä ö ü Ä Ö Ü ß. Steuerzeichen lehnt das Geraet in jedem Text ab.
@@ -307,7 +308,10 @@ class Handler(BaseHTTPRequestHandler):
         if p == "/api/v1/slots":
             return self._json(200, CONFIG)
         if p == "/api/v1/slots/status":
-            return self._json(200, {"slots": self._status()})
+            # Antwortform wie handleSlotsStatus(): Werte plus Geraetezustand (E11).
+            return self._json(200, {"slots": self._status(), "geraet": {
+                "freeHeap": 18400, "heapFrag": 7,
+                "uptimeSec": int(time.time() - START_ZEIT), "rssi": -58}})
         if p == "/api/v1/wifi/status":
             # Formate 1:1 aus handleWifiStatus() -- nur diese drei Schluessel.
             return self._json(200, {"connected": True, "ssid": "MOCK-WLAN",

@@ -37,15 +37,11 @@
 #include "web/Api.h"
 #include "ntp/NTPClient.h"
 #include "boot/RescueMode.h"
-#include <array>
 
 ConfigManager configManager;
 WiFiManager* wifiManager = nullptr;
 ESP8266HTTPUpdateServer httpUpdater;
 static constexpr const char* KV_SALT_STR = "GeekMagicOpenFirmwareIsAwesome";
-static size_t initial_free_heap = 0;
-static constexpr size_t FREE_BUF_SIZE = 32;
-static constexpr size_t MSG_BUF_SIZE = 96;
 
 static constexpr uint32_t SERIAL_BAUD_RATE = 115200;
 static constexpr uint32_t BOOT_DELAY_MS = 200;
@@ -56,40 +52,6 @@ static constexpr int LOADING_DELAY_MS = 1000;
 
 Webserver* webserver = nullptr;
 NTPClient* ntpClient = nullptr;
-
-/**
- * @brief Formats bytes into a human-readable string
- *
- * @param value Size in bytes
- * @return Formatted string
- */
-// Rein ganzzahlig gerechnet: Die Fliesskomma-Ausgabe von printf kostet auf diesem Chip
-// rund 4 KB Programmspeicher, und das fuer eine Zeile im Protokoll. Die eine
-// Nachkommastelle wird daher aus dem Rest der Division gebildet.
-static void formatBytes(size_t value, char* outBuf, size_t outBufSize) {
-    constexpr std::array<const char*, 5> UNITS = {"B", "KB", "MB", "GB", "TB"};
-    constexpr uint32_t THRESHOLD = 1024U;
-
-    auto rest = static_cast<uint32_t>(value);
-    uint32_t vorkomma = rest;
-    uint32_t teilerRest = 0;
-    int unit = 0;
-
-    while (vorkomma >= THRESHOLD && unit < static_cast<int>(UNITS.size()) - 1) {
-        teilerRest = vorkomma % THRESHOLD;
-        vorkomma /= THRESHOLD;
-        ++unit;
-    }
-
-    if (unit == 0) {
-        snprintf(outBuf, outBufSize, "%u %s", static_cast<unsigned int>(value), UNITS[unit]);
-    } else {
-        const uint32_t zehntel = (teilerRest * 10U + THRESHOLD / 2U) / THRESHOLD;
-        const uint32_t ganz = vorkomma + (zehntel / 10U);
-        snprintf(outBuf, outBufSize, "%lu.%lu %s", static_cast<unsigned long>(ganz),
-                 static_cast<unsigned long>(zehntel % 10U), UNITS[unit]);
-    }
-}
 
 /**
  * @brief Check whether LittleFS contains at least one entry
@@ -170,8 +132,6 @@ void setup() {
 
     webserver = new Webserver();
     webserver->begin();
-
-    initial_free_heap = ESP.getFreeHeap();  // NOLINT(readability-static-accessed-through-instance)
 
     DisplayManager::drawLoadingBar((float)step / TOTAL_STEPS, LOADING_BAR_Y);
 
@@ -265,23 +225,10 @@ void loop() {
     }
 
 
-    static unsigned long last_free_heap_log = 0;
-    static constexpr unsigned long FREE_HEAP_LOG_INTERVAL_MS = 10000UL;
-    unsigned long now = millis();
-
-    if (now - last_free_heap_log >= FREE_HEAP_LOG_INTERVAL_MS) {
-        last_free_heap_log = now;
-        char freeBuf[FREE_BUF_SIZE];
-        char initBuf[FREE_BUF_SIZE];
-        char msgBuf[MSG_BUF_SIZE];
-
-        formatBytes(ESP.getFreeHeap(), freeBuf,  // NOLINT(readability-static-accessed-through-instance)
-                    sizeof(freeBuf));
-        formatBytes(initial_free_heap, initBuf, sizeof(initBuf));
-
-        snprintf(msgBuf, sizeof(msgBuf), "Free heap: %s (initial: %s)", freeBuf, initBuf);
-        Logger::info(msgBuf);
-    }
+    // Kein Heartbeat mehr im Protokoll: Er schrieb alle zehn Sekunden den freien
+    // Speicher hinein und verdraengte damit im Ringpuffer alles, was wirklich passiert
+    // war. Dieselben Zahlen stehen jetzt im Status (/api/v1/slots/status, Feld
+    // "geraet") und damit auf der Werte-Seite (E11).
 
     EspClass::wdtFeed();  // kick watchdog
 }

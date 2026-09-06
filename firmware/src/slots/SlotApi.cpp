@@ -20,6 +20,7 @@
 #include "slots/SlotApi.h"
 
 #include <ArduinoJson.h>
+#include <ESP8266WiFi.h>
 #include <uri/UriBraces.h>
 
 #include "Logger.h"
@@ -93,9 +94,6 @@ auto SlotApi::konfigurationSichern() -> bool {
 
 // @openapi {get} /slots version=v1 group=Slots summary="Read slot configuration" requiresAuth=true
 void handleSlotsGet(Webserver* webserver) {
-    if (!requireBearerToken(webserver)) {
-        return;
-    }
     if (g_cfg == nullptr) {
         sendeFehler(webserver, HTTP_CODE_INTERNAL_ERROR, "Konfiguration nicht geladen");
         return;
@@ -113,9 +111,6 @@ void handleSlotsGet(Webserver* webserver) {
 
 // @openapi {post} /slots version=v1 group=Slots summary="Create or update one slot" requiresAuth=true
 void handleSlotsSave(Webserver* webserver) {
-    if (!requireBearerToken(webserver)) {
-        return;
-    }
     if (g_cfg == nullptr) {
         sendeFehler(webserver, HTTP_CODE_INTERNAL_ERROR, "Konfiguration nicht geladen");
         return;
@@ -212,9 +207,6 @@ void handleSlotsDelete(Webserver* webserver) {
 
 // @openapi {post} /slots/test version=v1 group=Slots summary="Fetch a URL from the device" requiresAuth=true
 void handleSlotsTest(Webserver* webserver) {
-    if (!requireBearerToken(webserver)) {
-        return;
-    }
     if (!webserver->raw().hasArg("plain")) {
         sendeFehler(webserver, HTTP_CODE_BAD_REQUEST, "leere Anfrage");
         return;
@@ -270,15 +262,22 @@ void handleSlotsTest(Webserver* webserver) {
 
 // @openapi {get} /slots/status version=v1 group=Slots summary="Read current slot values" requiresAuth=true
 void handleSlotsStatus(Webserver* webserver) {
-    if (!requireBearerToken(webserver)) {
-        return;
-    }
     if (g_cfg == nullptr) {
         sendeFehler(webserver, HTTP_CODE_INTERNAL_ERROR, "Konfiguration nicht geladen");
         return;
     }
 
     JsonDocument doc;
+
+    // Zustand des Geraets: dieselben Zahlen, die frueher alle zehn Sekunden ins
+    // Protokoll geschrieben wurden und dort alles andere verdraengten (E11). Hier
+    // holt sie ab, wer sie sehen will -- die Werte-Seite zeigt sie unter der Uebersicht.
+    JsonObject g = doc["geraet"].to<JsonObject>();
+    g["freeHeap"] = ESP.getFreeHeap();              // NOLINT(readability-static-accessed-through-instance)
+    g["heapFrag"] = ESP.getHeapFragmentation();     // NOLINT(readability-static-accessed-through-instance)
+    g["uptimeSec"] = millis() / 1000U;
+    g["rssi"] = WiFi.RSSI();
+
     JsonArray slots = doc["slots"].to<JsonArray>();
 
     for (uint8_t i = 0; i < MAX_SLOTS; i++) {
@@ -316,9 +315,6 @@ void handleSlotsStatus(Webserver* webserver) {
 
 // @openapi {post} /slots/settings version=v1 group=Slots summary="Update page settings" requiresAuth=true
 void handleSlotsSettings(Webserver* webserver) {
-    if (!requireBearerToken(webserver)) {
-        return;
-    }
     if (g_cfg == nullptr) {
         sendeFehler(webserver, HTTP_CODE_INTERNAL_ERROR, "Konfiguration nicht geladen");
         return;
@@ -359,14 +355,11 @@ void handleSlotsSettings(Webserver* webserver) {
 }
 
 void SlotApi::registerRoutes(Webserver* webserver) {
-    webserver->raw().on("/api/v1/slots", HTTP_GET, [webserver]() { handleSlotsGet(webserver); });
-    webserver->raw().on("/api/v1/slots", HTTP_POST, [webserver]() { handleSlotsSave(webserver); });
-    webserver->raw().on("/api/v1/slots/test", HTTP_POST,
-                        [webserver]() { handleSlotsTest(webserver); });
-    webserver->raw().on("/api/v1/slots/status", HTTP_GET,
-                        [webserver]() { handleSlotsStatus(webserver); });
-    webserver->raw().on("/api/v1/slots/settings", HTTP_POST,
-                        [webserver]() { handleSlotsSettings(webserver); });
+    geschuetzt(webserver, "/api/v1/slots", HTTP_GET, handleSlotsGet);
+    geschuetzt(webserver, "/api/v1/slots", HTTP_POST, handleSlotsSave);
+    geschuetzt(webserver, "/api/v1/slots/test", HTTP_POST, handleSlotsTest);
+    geschuetzt(webserver, "/api/v1/slots/status", HTTP_GET, handleSlotsStatus);
+    geschuetzt(webserver, "/api/v1/slots/settings", HTTP_POST, handleSlotsSettings);
 
     // Loeschen adressiert den Slot ueber die URL (/api/v1/slots/<i>) mit einem
     // Platzhalter (UriBraces) -- EINE Route statt zwoelf einzeln registrierter

@@ -58,6 +58,8 @@
 
           <button class="btn" @click="neuerSlot()">+ Neuer Wert</button>
           <button class="btn" @click="einstellungenOeffnen()">Seiten &amp; Wechsel</button>
+
+          <p class="small muted" x-show="geraetZeile()" x-text="geraetZeile()"></p>
         </div>
 
         <!-- ---------- Seiteneinstellungen ---------- -->

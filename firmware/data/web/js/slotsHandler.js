@@ -81,6 +81,7 @@ function slotsHandler() {
   return {
     config: null,
     status: [],
+    geraet: null,
     laden: true,
     fehler: "",
     meldung: "",
@@ -139,6 +140,29 @@ function slotsHandler() {
     },
 
     _statusLaeuft: false,
+    // Zustand des Geräts in einer Zeile. Die Zahlen kamen früher alle zehn Sekunden ins
+    // Protokoll und verdrängten dort alles andere; hier stehen sie, wo man sie sucht.
+    geraetZeile() {
+      const g = this.geraet;
+      if (!g) return "";
+      const kb = (n) => (Number(n) / 1024).toFixed(1).replace(".", ",") + " KB";
+      const s = Number(g.uptimeSec) || 0;
+      const dauer =
+        s < 3600
+          ? Math.floor(s / 60) + " min"
+          : s < 86400
+            ? Math.floor(s / 3600) + " h " + Math.floor((s % 3600) / 60) + " min"
+            : Math.floor(s / 86400) +
+              (Math.floor(s / 86400) === 1 ? " Tag " : " Tagen ") +
+              Math.floor((s % 86400) / 3600) + " h";
+      return (
+        "Speicher frei " + kb(g.freeHeap) +
+        " · Fragmentierung " + (Number(g.heapFrag) || 0) + " %" +
+        " · läuft seit " + dauer +
+        " · WLAN " + (Number(g.rssi) || 0) + " dBm"
+      );
+    },
+
     async statusLaden() {
       if (this._statusLaeuft) return;
       this._statusLaeuft = true;
@@ -148,6 +172,7 @@ function slotsHandler() {
         if (!r.ok) return;
         const d = await r.json();
         this.status = d.slots || [];
+        this.geraet = d.geraet || null;
       } catch (e) {
         this.fehler = "Status nicht erreichbar";
       } finally {

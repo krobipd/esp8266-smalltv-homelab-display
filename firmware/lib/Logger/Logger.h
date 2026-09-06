@@ -24,7 +24,10 @@
 
 enum LogLevel { LOG_DEBUG, LOG_INFO, LOG_WARN, LOG_ERROR };
 
-static constexpr LogLevel LOG_MIN_LEVEL = LOG_WARN;
+// Seit v0.4.0 auch INFO: Der Ringpuffer fasst 20 Eintraege und wurde frueher vom
+// Heartbeat (alle zehn Sekunden eine Speicherzeile) leergeschrieben. Der ist weg,
+// also ist Platz fuer das, was tatsaechlich passiert -- Start, WLAN, Update.
+static constexpr LogLevel LOG_MIN_LEVEL = LOG_INFO;
 static constexpr size_t LOG_BUFFER_MAX_ENTRIES = 20;
 static constexpr size_t LOG_ENTRY_MAX_LEN = 96;
 
