@@ -270,101 +270,109 @@
             <input id="refresh" type="number" min="5" max="3600" x-model.number="entwurf.refreshSec" />
           </div>
 
-          <!-- Schritt 4: Aussehen + Vorschau -->
-          <div x-show="schritt === 4">
-            <h3>Wie soll es aussehen?</h3>
-            <div class="row">
-              <div class="col">
-                <label for="page">Seite</label>
-                <select id="page" x-model.number="entwurf.page"
-                        @change="entwurf.pos = ersterFreierPlatz(Number(entwurf.page))">
-                  <option value="1">1</option><option value="2">2</option>
-                  <option value="3">3</option><option value="4">4</option>
-                </select>
-                <label for="pos">Platz auf der Seite</label>
-                <select id="pos" x-model.number="entwurf.pos">
-                  <template x-for="p in (maxPos(Number(entwurf.page)) + 1)" :key="p">
-                    <option :value="p - 1" x-text="p"></option>
-                  </template>
-                </select>
-                <!-- ACHTUNG: Dieses Formular existiert ZWEIMAL (Assistent Schritt 4 und
-                     Aendern-Formular, Suchwort "Darstellung"). Wer hier Optionen ergaenzt
-                     (Darstellung, Schrift), muss die zweite Stelle mitziehen -- sonst
-                     bieten Assistent und Aendern unterschiedliche Auswahlen an. -->
-                <label for="anz">Darstellung</label>
-                <select id="anz" x-model.number="entwurf.anzeige">
-                  <option value="0">nur Zahl</option>
-                  <option value="1">nur Balken</option>
-                  <option value="2">Balken mit Zahl</option>
-                </select>
-                <template x-if="zeigtBalken()">
-                  <div>
-                    <label for="bmin">Balken-Anfang</label>
-                    <input id="bmin" type="number" step="any" x-model.number="entwurf.barMin" />
-                    <label for="bmax">Balken-Ende</label>
-                    <input id="bmax" type="number" step="any" x-model.number="entwurf.barMax" />
-                  </div>
+        </div>
+
+        <!-- Schritt 4: Aussehen + Vorschau -->
+        <!-- Darstellung und Schwellwerte gelten fuer BEIDE Wege: den Assistenten
+             (Schritte 4 und 5) und das Aendern-Formular. Bis v0.4.0 standen sie
+             zweimal in dieser Datei, mit dem Hinweis, Aenderungen von Hand
+             mitzuziehen -- eine Anleitung zum Auseinanderlaufen. -->
+        <div x-show="(modus === 'assistent' && schritt === 4) || modus === 'aendern'">
+          <h3 x-show="modus === 'assistent'">Wie soll es aussehen?</h3>
+          <div class="row">
+            <div class="col">
+              <label for="page">Seite</label>
+              <select id="page" x-model.number="entwurf.page"
+                      @change="entwurf.pos = ersterFreierPlatz(Number(entwurf.page))">
+                <template x-for="s in limits.pages" :key="s">
+                  <option :value="s" x-text="s"></option>
                 </template>
-                <label for="wert-size">Schriftgröße Wert (1–10)</label>
-                <select id="wert-size" x-model.number="entwurf.wertSize"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="6">6</option><option value="7">7</option><option value="8">8</option><option value="9">9</option><option value="10">10</option></select>
-                <label for="label-size">Schriftgröße Beschriftung (1–10)</label>
-                <select id="label-size" x-model.number="entwurf.labelSize"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="6">6</option><option value="7">7</option><option value="8">8</option><option value="9">9</option><option value="10">10</option></select>
-                <label for="unit-size">Schriftgröße Einheit (1–10)</label>
-                <select id="unit-size" x-model.number="entwurf.unitSize"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="6">6</option><option value="7">7</option><option value="8">8</option><option value="9">9</option><option value="10">10</option></select>
-                <label>
-                  <input type="checkbox" x-model="entwurf.einheitDaneben" style="width:auto" />
-                  Einheit neben dem Wert
-                </label>
-                <label for="color">Farbe</label>
-                <input id="color" type="color" x-model="entwurf.colorHex" />
-              </div>
-              <div class="col">
-                <label>Vorschau (so groß wie das Display)</label>
-                <div class="preview">
-                  <div class="pv-label" :style="`font-size:${vorschauPx('labelSize')}px`"
-                       x-text="entwurf.label || 'Beschriftung'"></div>
-                  <div class="pv-zeile" x-show="zeigtZahl()">
-                    <div class="pv-value"
-                         :style="`font-size:${vorschauPx('wertSize')}px;color:${entwurf.colorHex}`"
-                         x-text="vorschauWert()"></div>
-                    <div class="pv-unit" x-show="einheitNebenWert()"
-                         :style="`font-size:${vorschauPx('unitSize')}px`"
-                         x-text="entwurf.unit"></div>
-                  </div>
-                  <div class="pv-bar" x-show="zeigtBalken()">
-                    <div class="pv-bar-fill"
-                         :style="`width:${(vorschauAnteil()*100).toFixed(1)}%;background:${entwurf.colorHex}`"></div>
-                  </div>
-                  <div class="pv-unit" x-show="!einheitNebenWert()"
+              </select>
+              <label for="pos">Platz auf der Seite</label>
+              <select id="pos" x-model.number="entwurf.pos">
+                <template x-for="p in (maxPos(Number(entwurf.page)) + 1)" :key="p">
+                  <option :value="p - 1" x-text="p"></option>
+                </template>
+              </select>
+              <label for="anz">Darstellung</label>
+              <select id="anz" x-model.number="entwurf.anzeige">
+                <option value="0">nur Zahl</option>
+                <option value="1">nur Balken</option>
+                <option value="2">Balken mit Zahl</option>
+              </select>
+              <template x-if="zeigtBalken()">
+                <div>
+                  <label for="bmin">Balken-Anfang</label>
+                  <input id="bmin" type="number" step="any" x-model.number="entwurf.barMin" />
+                  <label for="bmax">Balken-Ende</label>
+                  <input id="bmax" type="number" step="any" x-model.number="entwurf.barMax" />
+                </div>
+              </template>
+              <template x-for="feld in schriftFelder" :key="feld.name">
+                <div>
+                  <label :for="feld.name" x-text="feld.text"></label>
+                  <select :id="feld.name" x-model.number="entwurf[feld.name]">
+                    <template x-for="n in schriftStufen()" :key="n">
+                      <option :value="n" x-text="n"></option>
+                    </template>
+                  </select>
+                </div>
+              </template>
+              <label>
+                <input type="checkbox" x-model="entwurf.einheitDaneben" style="width:auto" />
+                Einheit neben dem Wert
+              </label>
+              <label for="color">Farbe</label>
+              <input id="color" type="color" x-model="entwurf.colorHex" />
+            </div>
+            <div class="col">
+              <label>Vorschau (so groß wie das Display)</label>
+              <div class="preview">
+                <div class="pv-label" :style="`font-size:${vorschauPx('labelSize')}px`"
+                     x-text="entwurf.label || 'Beschriftung'"></div>
+                <div class="pv-zeile" x-show="zeigtZahl()">
+                  <div class="pv-value"
+                       :style="`font-size:${vorschauPx('wertSize')}px;color:${entwurf.colorHex}`"
+                       x-text="vorschauWert()"></div>
+                  <div class="pv-unit" x-show="einheitNebenWert()"
                        :style="`font-size:${vorschauPx('unitSize')}px`"
                        x-text="entwurf.unit"></div>
                 </div>
+                <div class="pv-bar" x-show="zeigtBalken()">
+                  <div class="pv-bar-fill"
+                       :style="`width:${(vorschauAnteil()*100).toFixed(1)}%;background:${entwurf.colorHex}`"></div>
+                </div>
+                <div class="pv-unit" x-show="!einheitNebenWert()"
+                     :style="`font-size:${vorschauPx('unitSize')}px`"
+                     x-text="entwurf.unit"></div>
               </div>
             </div>
           </div>
+        </div>
 
-          <!-- Schritt 5: Schwellwerte -->
-          <div x-show="schritt === 5">
-            <h3>Wann soll gewarnt werden?</h3>
-            <p class="muted small">
-              Leer lassen heißt: keine Grenze. Ein Alarm zieht die betroffene Seite nach vorn.
-            </p>
-            <div class="row">
-              <div class="col">
-                <label for="wa">Warnung ab (über)</label>
-                <input id="wa" type="number" step="any" x-model="entwurf.warnAbove" />
-                <label for="aa">Alarm ab (über)</label>
-                <input id="aa" type="number" step="any" x-model="entwurf.alarmAbove" />
-              </div>
-              <div class="col">
-                <label for="wb">Warnung ab (unter)</label>
-                <input id="wb" type="number" step="any" x-model="entwurf.warnBelow" />
-                <label for="ab">Alarm ab (unter)</label>
-                <input id="ab" type="number" step="any" x-model="entwurf.alarmBelow" />
-              </div>
+        <div x-show="(modus === 'assistent' && schritt === 5) || modus === 'aendern'">
+          <h3>Wann soll gewarnt werden?</h3>
+          <p class="muted small">
+            Leer lassen heißt: keine Grenze. Ein Alarm zieht die betroffene Seite nach vorn.
+          </p>
+          <div class="row">
+            <div class="col">
+              <label for="wa">Warnung ab (über)</label>
+              <input id="wa" type="number" step="any" x-model="entwurf.warnAbove" />
+              <label for="aa">Alarm ab (über)</label>
+              <input id="aa" type="number" step="any" x-model="entwurf.alarmAbove" />
+            </div>
+            <div class="col">
+              <label for="wb">Warnung ab (unter)</label>
+              <input id="wb" type="number" step="any" x-model="entwurf.warnBelow" />
+              <label for="ab">Alarm ab (unter)</label>
+              <input id="ab" type="number" step="any" x-model="entwurf.alarmBelow" />
             </div>
           </div>
+        </div>
 
+        <!-- Knopfleiste des Assistenten -- steht unter dem gemeinsamen Block. -->
+        <div x-show="modus === 'assistent'">
           <hr />
           <div class="action-row">
             <button class="btn" @click="zurueck()" x-show="schritt > 1">Zurück</button>
@@ -374,7 +382,10 @@
           </div>
         </div>
 
+
         <!-- ---------- Ändern ---------- -->
+        <!-- Aendern: nur die Felder, die der Assistent in den Schritten 1 bis 3
+             abfragt. Darstellung und Schwellwerte stehen oben, gemeinsam fuer beide. -->
         <div x-show="modus === 'aendern'">
           <h2>Wert ändern</h2>
           <div class="row">
@@ -397,95 +408,19 @@
               <input id="e-field" type="text" x-model="entwurf.field" :maxlength="limits.field" />
               <label for="e-label">Beschriftung</label>
               <input id="e-label" type="text" x-model="entwurf.label" :maxlength="limits.label" />
+            </div>
+            <div class="col">
               <label for="e-unit">Einheit</label>
               <input id="e-unit" type="text" x-model="entwurf.unit" :maxlength="limits.unit" />
               <label for="e-dec">Nachkommastellen</label>
               <select id="e-dec" x-model.number="entwurf.decimals">
-                <option value="0">0</option><option value="1">1</option>
-                <option value="2">2</option><option value="3">3</option>
-              </select>
-              <label for="e-refresh">Abrufintervall (s)</label>
-              <input id="e-refresh" type="number" min="5" max="3600" x-model.number="entwurf.refreshSec" />
-            </div>
-
-            <div class="col">
-              <label for="e-page">Seite</label>
-              <select id="e-page" x-model.number="entwurf.page"
-                      @change="entwurf.pos = ersterFreierPlatz(Number(entwurf.page))">
-                <option value="1">1</option><option value="2">2</option>
-                <option value="3">3</option><option value="4">4</option>
-              </select>
-              <label for="e-pos">Platz</label>
-              <select id="e-pos" x-model.number="entwurf.pos">
-                <template x-for="p in (maxPos(Number(entwurf.page)) + 1)" :key="p">
-                  <option :value="p - 1" x-text="p"></option>
+                <template x-for="n in (limits.decimalsMax + 1)" :key="n">
+                  <option :value="n - 1" x-text="n - 1"></option>
                 </template>
               </select>
-              <!-- ACHTUNG: Zweitfassung des Formular-Blocks aus dem Assistenten
-                   (Schritt 4) -- Aenderungen an den Auswahllisten dort mitziehen. -->
-              <label for="e-anz">Darstellung</label>
-              <select id="e-anz" x-model.number="entwurf.anzeige">
-                <option value="0">nur Zahl</option>
-                <option value="1">nur Balken</option>
-                <option value="2">Balken mit Zahl</option>
-              </select>
-              <template x-if="zeigtBalken()">
-                <div>
-                  <label for="e-bmin">Balken-Anfang</label>
-                  <input id="e-bmin" type="number" step="any" x-model.number="entwurf.barMin" />
-                  <label for="e-bmax">Balken-Ende</label>
-                  <input id="e-bmax" type="number" step="any" x-model.number="entwurf.barMax" />
-                </div>
-              </template>
-              <label for="e-wert-size">Schriftgröße Wert (1–10)</label>
-              <select id="e-wert-size" x-model.number="entwurf.wertSize"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="6">6</option><option value="7">7</option><option value="8">8</option><option value="9">9</option><option value="10">10</option></select>
-              <label for="e-label-size">Schriftgröße Beschriftung (1–10)</label>
-              <select id="e-label-size" x-model.number="entwurf.labelSize"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="6">6</option><option value="7">7</option><option value="8">8</option><option value="9">9</option><option value="10">10</option></select>
-              <label for="e-unit-size">Schriftgröße Einheit (1–10)</label>
-              <select id="e-unit-size" x-model.number="entwurf.unitSize"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="6">6</option><option value="7">7</option><option value="8">8</option><option value="9">9</option><option value="10">10</option></select>
-              <label>
-                <input type="checkbox" x-model="entwurf.einheitDaneben" style="width:auto" />
-                Einheit neben dem Wert
-              </label>
-              <label for="e-color">Farbe</label>
-              <input id="e-color" type="color" x-model="entwurf.colorHex" />
-
-              <label>Vorschau</label>
-              <div class="preview">
-                <div class="pv-label" :style="`font-size:${vorschauPx('labelSize')}px`"
-                       x-text="entwurf.label || 'Beschriftung'"></div>
-                <div class="pv-zeile" x-show="zeigtZahl()">
-                  <div class="pv-value"
-                       :style="`font-size:${vorschauPx('wertSize')}px;color:${entwurf.colorHex}`"
-                       x-text="vorschauWert()"></div>
-                  <div class="pv-unit" x-show="einheitNebenWert()"
-                       :style="`font-size:${vorschauPx('unitSize')}px`"
-                       x-text="entwurf.unit"></div>
-                </div>
-                <div class="pv-bar" x-show="zeigtBalken()">
-                  <div class="pv-bar-fill"
-                       :style="`width:${(vorschauAnteil()*100).toFixed(1)}%;background:${entwurf.colorHex}`"></div>
-                </div>
-                <div class="pv-unit" x-show="!einheitNebenWert()"
-                       :style="`font-size:${vorschauPx('unitSize')}px`"
-                       x-text="entwurf.unit"></div>
-              </div>
-            </div>
-          </div>
-
-          <h3>Schwellwerte</h3>
-          <div class="row">
-            <div class="col">
-              <label for="e-wa">Warnung ab (über)</label>
-              <input id="e-wa" type="number" step="any" x-model="entwurf.warnAbove" />
-              <label for="e-aa">Alarm ab (über)</label>
-              <input id="e-aa" type="number" step="any" x-model="entwurf.alarmAbove" />
-            </div>
-            <div class="col">
-              <label for="e-wb">Warnung ab (unter)</label>
-              <input id="e-wb" type="number" step="any" x-model="entwurf.warnBelow" />
-              <label for="e-ab">Alarm ab (unter)</label>
-              <input id="e-ab" type="number" step="any" x-model="entwurf.alarmBelow" />
+              <label for="e-refresh">Abrufintervall (s)</label>
+              <input id="e-refresh" type="number" :min="limits.refreshMin" :max="limits.refreshMax"
+                     x-model.number="entwurf.refreshSec" />
             </div>
           </div>
 

@@ -84,6 +84,13 @@ function slotsHandler() {
     geraet: null,
     // Vom Gerät geliefert (GET /slots, Feld "limits"). Der Rückfall gilt nur, solange
     // die Konfiguration noch nicht geladen ist oder eine ältere Firmware antwortet.
+    // Die drei Schriftgrößen unterscheiden sich nur im Namen. Als Daten statt als drei
+    // gleich aussehende Auswahllisten im HTML.
+    schriftFelder: [
+      { name: "wertSize", text: "Schriftgröße Wert" },
+      { name: "labelSize", text: "Schriftgröße Beschriftung" },
+      { name: "unitSize", text: "Schriftgröße Einheit" },
+    ],
     limits: {
       url: 127, label: 23, field: 31, unit: 15,
       slots: 12, pages: 4,
@@ -398,25 +405,16 @@ function slotsHandler() {
 
     slotAendern(index) {
       const s = this.config.slots[index];
+      // Der leere Entwurf liefert die Vorgaben, der gespeicherte Wert überschreibt sie.
+      // Vorher stand hier jedes Feld einzeln — ein neues Feld im Modell wurde beim
+      // Ändern schlicht vergessen und fiel beim Speichern auf die Vorgabe zurück.
       this.entwurf = {
+        ...leererEntwurf(),
+        ...s,
         index,
-        enabled: s.enabled,
-        url: s.url,
-        field: s.field,
-        label: s.label,
-        unit: s.unit,
-        decimals: s.decimals,
-        refreshSec: s.refreshSec,
-        page: s.page,
-        pos: s.pos,
-        wertSize: s.wertSize ?? STD_WERT_SIZE,
-        labelSize: s.labelSize ?? STD_LABEL_SIZE,
-        unitSize: s.unitSize ?? STD_UNIT_SIZE,
+        // Was anders heißt oder nicht null sein darf, bleibt ausgeschrieben.
         einheitDaneben: s.einheitDaneben !== false,
         colorHex: rgb565ZuHex(s.color),
-        anzeige: s.anzeige ?? 0,
-        barMin: s.barMin ?? 0,
-        barMax: s.barMax ?? 100,
         warnAbove: s.warnAbove ?? "",
         alarmAbove: s.alarmAbove ?? "",
         warnBelow: s.warnBelow ?? "",
@@ -430,6 +428,12 @@ function slotsHandler() {
       this.modus = null;
       this.testErgebnis = null;
       this.fehler = "";
+    },
+
+    schriftStufen() {
+      const stufen = [];
+      for (let n = this.limits.textStufeMin; n <= this.limits.textStufeMax; n++) stufen.push(n);
+      return stufen;
     },
 
     maxPos(seite) {
