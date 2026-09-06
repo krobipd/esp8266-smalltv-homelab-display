@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Host-Unit-Tests des Konfigurationsmodells und seines JSON-Codecs:
-//   c++ -std=c++17 -I smalltv/firmware/.pio/libdeps/esp12e/ArduinoJson/src \
+//   c++ -std=c++17 -I smalltv/firmware/.pio/libdeps/esp12e/ArduinoJson/src
 //       smalltv/tests/host/test_config.cpp -o /tmp/smalltv-config && /tmp/smalltv-config
 #include "pruefe.h"
 #include <cstdio>

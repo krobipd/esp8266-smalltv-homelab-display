@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Host-Unit-Tests der Wert-Extraktion. Uebersetzen gegen die von PlatformIO geholte
 // ArduinoJson-Version, damit hier genau das getestet wird, was spaeter auf dem Geraet laeuft:
-//   c++ -std=c++17 -I smalltv/firmware/.pio/libdeps/esp12e/ArduinoJson/src \
+//   c++ -std=c++17 -I smalltv/firmware/.pio/libdeps/esp12e/ArduinoJson/src
 //       smalltv/tests/host/test_extract.cpp -o /tmp/smalltv-extract && /tmp/smalltv-extract
 #include "pruefe.h"
 #include <cstdio>

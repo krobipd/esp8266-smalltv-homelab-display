@@ -18,13 +18,35 @@ fi
 # Mit Sanitizern und Warnungen als Fehler: Die Logik dieses Projekts rechnet mit
 # rohen Puffern (char[24], memcpy, snprintf). Ein Ueberlauf faellt auf dem Host sonst
 # gar nicht auf und schlaegt erst auf dem Geraet zu -- dort ohne Fehlermeldung.
-for t in util extract config httpcache abbild; do
-    c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined \
-        -fno-omit-frame-pointer -I "$ARDUINOJSON" \
-        "$BASIS/tests/host/test_$t.cpp" -o "/tmp/smalltv-$t"
-    "/tmp/smalltv-$t"
+# Mit JEDEM verfuegbaren Compiler: clang und gcc warnen unterschiedlich, und mit -Werror
+# heisst das, dass ein Fehler bei nur einem von beiden auffaellt. Genau so ist v0.4.2 in
+# der CI gescheitert, waehrend lokal (nur clang) alles gruen war.
+UEBERSETZER=""
+for c in c++ g++ clang++; do
+    if command -v "$c" >/dev/null 2>&1; then
+        # Dieselbe Binaerdatei nicht zweimal: "c++" ist auf macOS clang++, auf Linux g++.
+        pfad="$(command -v "$c")"
+        ziel="$(readlink "$pfad" 2>/dev/null || echo "$pfad")"
+        case " $UEBERSETZER " in
+            *" $ziel "*) ;;
+            *) UEBERSETZER="$UEBERSETZER $ziel" ;;
+        esac
+    fi
 done
-echo "Host-Tests: 5x OK (mit Sanitizern)"
+if [ -z "$UEBERSETZER" ]; then
+    echo "FEHLER: kein C++-Compiler gefunden."
+    exit 1
+fi
+
+for CXX in $UEBERSETZER; do
+    for t in util extract config httpcache abbild; do
+        "$CXX" -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined \
+            -fno-omit-frame-pointer -I "$ARDUINOJSON" \
+            "$BASIS/tests/host/test_$t.cpp" -o "/tmp/smalltv-$t"
+        "/tmp/smalltv-$t"
+    done
+    echo "Host-Tests: 5x OK mit $(basename "$CXX") (Sanitizer, Warnungen als Fehler)"
+done
 
 # EINE Autoritaet fuer die Grenzwerte: Die Firmware druckt sie, der Mock haelt sie als
 # Tabelle, die Oberflaeche bekommt sie vom Geraet. Laufen Firmware und Mock auseinander,
