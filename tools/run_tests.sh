@@ -15,13 +15,44 @@ if [ ! -d "$ARDUINOJSON" ]; then
     exit 1
 fi
 
+# Mit Sanitizern und Warnungen als Fehler: Die Logik dieses Projekts rechnet mit
+# rohen Puffern (char[24], memcpy, snprintf). Ein Ueberlauf faellt auf dem Host sonst
+# gar nicht auf und schlaegt erst auf dem Geraet zu -- dort ohne Fehlermeldung.
 for t in util extract config httpcache abbild; do
-    c++ -std=c++17 -I "$ARDUINOJSON" "$BASIS/tests/host/test_$t.cpp" -o "/tmp/smalltv-$t"
+    c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined \
+        -fno-omit-frame-pointer -I "$ARDUINOJSON" \
+        "$BASIS/tests/host/test_$t.cpp" -o "/tmp/smalltv-$t"
     "/tmp/smalltv-$t"
 done
-echo "Host-Tests: 5x OK"
+echo "Host-Tests: 5x OK (mit Sanitizern)"
+
+# Fliesskomma-printf zieht rund 4 KB Programmspeicher nach sich; ein post-Skript
+# haelt es draussen (scripts/strip_float_printf.py). Kommt es zurueck, faellt es hier
+# auf statt erst bei der naechsten Speicherknappheit (N24).
+NM="$HOME/.platformio/packages/toolchain-xtensa/bin/xtensa-lx106-elf-nm"
+ELF="$BASIS/firmware/.pio/build/esp12e/firmware.elf"
+if [ -x "$NM" ] && [ -f "$ELF" ]; then
+    if "$NM" "$ELF" | grep -q "_printf_float"; then
+        echo "FEHLER: Fliesskomma-printf ist wieder im Abbild."
+        exit 1
+    fi
+    echo "Abbild: kein Fliesskomma-printf"
+fi
 
 "$BASIS/tools/check_web.sh"
+
+# Jede Seite so laden, wie der Browser es taete: alle eingebundenen Skripte in einen
+# Kontext, dann jede x-data-Komponente aufbauen. Die Syntaxpruefung oben saehe eine
+# Seite nicht, die ein Skript gar nicht einbindet oder eine Komponente nennt, die es
+# nicht gibt (N23).
+node "$BASIS/tests/web/test_seiten.mjs"
+
+# Die Tests der Update-Erkennung laufen gegen die echten Abbilder aus dist/. Fehlt der
+# Ordner, meldeten sie frueher einen unverstaendlichen Dateifehler (N14).
+if [ ! -d "$BASIS/dist" ]; then
+    echo "FEHLER: dist/ fehlt — erst 'tools/paket.sh' laufen lassen."
+    exit 1
+fi
 
 # Verhaltenstest der Werte-Seite: was schickt sie wirklich ans Geraet?
 # Die Syntaxpruefung oben sagt darueber nichts.
@@ -44,6 +75,12 @@ node "$BASIS/tests/web/test_md5.mjs"
 
 # Sichern/Wiederherstellen laeuft gegen die echten Endpunkte -- dafuer braucht es den
 # Mock. Er wird hier gestartet und danach zuverlaessig wieder beendet (auch im Fehlerfall).
+# Laeuft schon ein Mock (etwa aus einem anderen Fenster), spraeche der Test mit
+# DESSEN Zustand -- und der hier gestartete stuerbe still am belegten Port (H5).
+if lsof -iTCP:8099 -sTCP:LISTEN >/dev/null 2>&1; then
+    echo "FEHLER: Port 8099 ist belegt — laeuft bereits ein Mock?"
+    exit 1
+fi
 python3 "$BASIS/tools/mock_api.py" >/dev/null 2>&1 &
 MOCK_PID=$!
 trap 'kill $MOCK_PID 2>/dev/null || true' EXIT

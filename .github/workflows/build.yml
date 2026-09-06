@@ -31,6 +31,13 @@ jobs:
       - name: Install PlatformIO
         run: pip install platformio==6.1.19
 
+      # Statische Pruefung vor dem Bauen: Ein Befund soll auffallen, bevor irgendwo ein
+      # Abbild entsteht, das jemand flashen koennte.
+      - name: Lint (clang-tidy)
+        run: tools/lint.sh
+        env:
+          PIO: pio
+
       - name: Build firmware
         run: pio run
         working-directory: firmware

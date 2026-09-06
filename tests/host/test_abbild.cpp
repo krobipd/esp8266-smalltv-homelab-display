@@ -2,7 +2,7 @@
 // Host-Unit-Tests der Abbild-Erkennung. Laufen ohne Geraet und ohne Arduino.
 // Die Gegenprobe an den ECHTEN Abbildern aus dist/ macht tests/web/test_ota_erkennung.mjs
 // fuer dieselbe Regel in der Oberflaeche -- hier steht die Regel des Geraets.
-#include <cassert>
+#include "pruefe.h"
 #include <cstdio>
 #include <cstring>
 #include "../../firmware/include/abbild_art.h"
@@ -15,26 +15,26 @@ int main() {
     const uint8_t dateisystem[16] = {0x01, 0x00, 0x00, 0x00, 0xF0, 0x0F, 0xFF, 0xF7,
                                      'l',  'i',  't',  't',  'l',  'e',  'f',  's'};
 
-    assert(erkenneAbbild(firmware, sizeof(firmware)) == ABBILD_FIRMWARE);
-    assert(erkenneAbbild(dateisystem, sizeof(dateisystem)) == ABBILD_DATEISYSTEM);
+    PRUEFE(erkenneAbbild(firmware, sizeof(firmware)) == ABBILD_FIRMWARE);
+    PRUEFE(erkenneAbbild(dateisystem, sizeof(dateisystem)) == ABBILD_DATEISYSTEM);
 
     // Nichts von beidem wird geraten -- lieber ablehnen als den falschen Bereich schreiben.
     const uint8_t fremd[16] = {'P', 'K', 3, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-    assert(erkenneAbbild(fremd, sizeof(fremd)) == ABBILD_UNBEKANNT);
+    PRUEFE(erkenneAbbild(fremd, sizeof(fremd)) == ABBILD_UNBEKANNT);
     // Zu kurz zum Erkennen: ebenfalls unbekannt, nicht "vielleicht Firmware".
-    assert(erkenneAbbild(dateisystem, 15) == ABBILD_UNBEKANNT);
-    assert(erkenneAbbild(nullptr, 16) == ABBILD_UNBEKANNT);
+    PRUEFE(erkenneAbbild(dateisystem, 15) == ABBILD_UNBEKANNT);
+    PRUEFE(erkenneAbbild(nullptr, 16) == ABBILD_UNBEKANNT);
 
     // Die Meldungen muessen die Richtung benennen und sagen, dass nichts geschrieben wurde.
     const char* t1 = abbildFehlertext(ABBILD_DATEISYSTEM, ABBILD_FIRMWARE);
-    assert(strstr(t1, "Firmware-Abbild") != nullptr);
-    assert(strstr(t1, "nichts geschrieben") != nullptr);
+    PRUEFE(strstr(t1, "Firmware-Abbild") != nullptr);
+    PRUEFE(strstr(t1, "nichts geschrieben") != nullptr);
     const char* t2 = abbildFehlertext(ABBILD_FIRMWARE, ABBILD_DATEISYSTEM);
-    assert(strstr(t2, "Oberflaeche") != nullptr);
-    assert(strstr(t2, "nichts geschrieben") != nullptr);
-    assert(strcmp(t1, t2) != 0);
+    PRUEFE(strstr(t2, "Oberflaeche") != nullptr);
+    PRUEFE(strstr(t2, "nichts geschrieben") != nullptr);
+    PRUEFE(strcmp(t1, t2) != 0);
     const char* t3 = abbildFehlertext(ABBILD_UNBEKANNT, ABBILD_FIRMWARE);
-    assert(strstr(t3, "weder") != nullptr);
+    PRUEFE(strstr(t3, "weder") != nullptr);
 
     printf("OK\n");
     return 0;

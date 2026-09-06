@@ -13,4 +13,6 @@ document.addEventListener("alpine:init", () => {
     Alpine.data("anmeldungHandler", anmeldungHandler);
   if (typeof slotsHandler !== "undefined")
     Alpine.data("slotsHandler", slotsHandler);
+  if (typeof sicherungHandler !== "undefined")
+    Alpine.data("sicherungHandler", sicherungHandler);
 });
