@@ -19,4 +19,12 @@ if [ -z "$PIO" ] || [ ! -x "$PIO" ]; then
 fi
 
 cd "$BASIS/firmware"
-"$PIO" check --fail-on-defect high --skip-packages
+# --pattern statt --skip-packages: Letzteres nahm clang-tidy auch die Include-Pfade des
+# Frameworks. Jede Datei brach dann mit "Arduino.h file not found" ab, PlatformIO meldete
+# trotzdem "No defects found", und der Lauf war in zweieinhalb Sekunden durch -- eine
+# Pruefung, die nichts prueft und gruen meldet. Mit --pattern bleiben die Pfade, und nur
+# die eigenen Quellen werden analysiert (rund 20 Sekunden).
+# Der Cache wird verworfen: Sonst wiederholt PlatformIO das Ergebnis unveraenderter
+# Dateien, auch wenn sich die Regelmenge geaendert hat.
+rm -rf .pio/check
+"$PIO" check --fail-on-defect high --pattern src --pattern include

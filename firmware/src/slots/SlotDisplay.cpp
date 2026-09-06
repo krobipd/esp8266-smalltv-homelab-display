@@ -172,8 +172,10 @@ void kachelRechteck(const Config& cfg, uint8_t seite, PageLayout l, uint8_t pos,
                                                      inhaltHoeheAufPlatz(cfg, seite, 1),
                                                      cfg.teilung[seite - 1]);
             x = 0;
-            y = (pos == 0) ? 0 : obenH;
-            h = (pos == 0) ? obenH : (int16_t)(HOEHE - obenH);
+            // Der Bedingungsoperator rechnet in int; ohne den Cast um den GANZEN
+            // Ausdruck ist die Zuweisung eine verengende Umwandlung (clang-tidy).
+            y = (int16_t)((pos == 0) ? 0 : obenH);
+            h = (int16_t)((pos == 0) ? obenH : (HOEHE - obenH));
             break;
         }
         default:
