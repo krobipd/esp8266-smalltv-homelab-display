@@ -232,6 +232,55 @@ def probe_wlan(g, version):
         else "nach 120 s nicht zurueck -- Geraet vermutlich im AP-Modus, Stecker ziehen"))
 
 
+def _hochladen(g, pfad, datei, md5, timeout=120):
+    """Multipart-Upload eines Abbilds -- so, wie es die Update-Seite tut."""
+    with open(datei, "rb") as f:
+        inhalt = f.read()
+    grenze = "----abnahme" + uuid.uuid4().hex
+    koerper = (("--%s\r\nContent-Disposition: form-data; name=\"file\"; filename=\"abnahme.bin\"\r\n"
+                "Content-Type: application/octet-stream\r\n\r\n") % grenze).encode()
+    koerper += inhalt + ("\r\n--%s--\r\n" % grenze).encode()
+    kopf = {"Content-Type": "multipart/form-data; boundary=" + grenze}
+    if md5:
+        kopf["X-Abbild-MD5"] = md5
+    _, _, _, body = g._anfrage(pfad, daten=koerper, kopf=kopf, timeout=timeout)
+    return json.loads(body)
+
+
+def probe_ota_fs(g, version, datei):
+    """Dateisystem-Abbild mit FALSCHER Pruefsumme hochladen.
+
+    Erwartet wird eine Ablehnung wegen der Pruefsumme -- also ein Fehler, der ERST NACH
+    dem erfolgreichen Start auftritt. Genau das trennt diese Probe von --ota: Scheitert
+    schon der Start, meldet das Geraet etwas ganz anderes ("Bad Size Given"), und das
+    Dateisystem liesse sich ueberhaupt nicht mehr aktualisieren. So geschehen in v0.5.0,
+    weil die Groesse der Zielpartition erst nach dem Aushaengen abgefragt wurde.
+
+    Ungefaehrlich: Mit falscher Pruefsumme wird nichts aktiviert.
+    """
+    if version is None or version_tupel(version) < (0, 3, 2):
+        melde(False, "FS-Probe verweigert: braucht Firmware v0.3.2 oder neuer (gefunden %s)" % version)
+        return
+    with open(datei, "rb") as f:
+        kopf_bytes = f.read(1)
+    if kopf_bytes == b"\xe9":
+        melde(False, "FS-Probe: %s ist ein FIRMWARE-Abbild (beginnt mit 0xE9)" % datei)
+        return
+    try:
+        antwort = _hochladen(g, "/api/v1/ota/fs", datei, "0" * 32)
+    except Exception as e:  # noqa: BLE001
+        melde(False, "FS-Probe: keine auswertbare Antwort (%s)" % e)
+        return
+    meldung = str(antwort.get("message", ""))
+    abgelehnt = (antwort.get("ok") is False or str(antwort.get("status", "")).lower() == "error")
+    if "size" in meldung.lower():
+        melde(False, "FS-Update laesst sich GAR NICHT starten (%r) -- Dateisystem nicht aktualisierbar"
+              % meldung)
+        return
+    melde(abgelehnt and "md5" in meldung.lower(),
+          "FS-Update: startet und faellt erst an der Pruefsumme -- %r" % meldung)
+
+
 def probe_ota(g, version, datei):
     """Gueltiges Firmware-Abbild mit FALSCHER Pruefsumme hochladen -- muss abgelehnt werden
     (A3). Vor v0.3.2 kennt das Geraet keine Pruefsumme und wuerde das Abbild flashen."""
@@ -343,6 +392,8 @@ def main():
     p.add_argument("--speichern", metavar="DATEI", help="aktuellen Stand fuer spaeteren Vergleich sichern")
     p.add_argument("--wlan", action="store_true", help="Rueckkehr nach falscher SSID (ab v0.3.0)")
     p.add_argument("--ota", metavar="FIRMWARE.bin", help="Ablehnung bei falscher Pruefsumme (ab v0.3.2)")
+    p.add_argument("--ota-fs", metavar="LITTLEFS.bin",
+                   help="Dateisystem-Update startet ueberhaupt (ab v0.3.2, faellt erst an der Pruefsumme)")
     p.add_argument("--zugang", action="store_true",
                    help="Upload ohne Passwort ergibt genau eine Antwort (ab v0.4.0, setzt kurz ein Passwort)")
     a = p.parse_args()
@@ -373,6 +424,8 @@ def main():
         probe_wlan(g, version)
     if a.ota:
         probe_ota(g, version, a.ota)
+    if a.ota_fs:
+        probe_ota_fs(g, version, a.ota_fs)
     if a.zugang:
         probe_zugang(g, version)
 

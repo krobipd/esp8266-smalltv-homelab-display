@@ -51,6 +51,12 @@ bool OtaAblauf::start(int modus, size_t gesamt, const char* md5) {
     g_modus = modus;
     g_meldung = "";
 
+    // REIHENFOLGE: Erst die Groesse der Zielpartition holen, DANN aushaengen. Umgekehrt
+    // liefert LittleFS.info() auf dem ausgehaengten Dateisystem 0, und Update.begin(0)
+    // scheitert mit "Bad Size Given" -- genau das ist in v0.5.0 passiert, weil dieser
+    // Aufruf beim Zusammenlegen der beiden OTA-Ablaeufe hinter close_all_fs() rutschte.
+    const size_t platz = zielPlatz(modus);
+
     if (modus == U_FS) {
         // Die Partition wird gleich ueberschrieben: Dateisystem aushaengen, wie es der
         // Update-Server des Frameworks tut. Ohne das bliebe ein Mount mit veralteten
@@ -59,7 +65,7 @@ bool OtaAblauf::start(int modus, size_t gesamt, const char* md5) {
         close_all_fs();
     }
 
-    if (!Update.begin(zielPlatz(modus), modus)) {
+    if (!Update.begin(platz, modus)) {
         if (modus == U_FS) {
             LittleFS.begin();  // Oberflaeche soll weiterlaufen
         }
