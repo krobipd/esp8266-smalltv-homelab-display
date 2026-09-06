@@ -35,6 +35,23 @@ struct Slot {
     Thresholds thr;
 };
 
+// Zeilen einer Kachel aus den EINSTELLUNGEN eines Slots. mitUnterzeile kommt vom
+// Aufrufer, weil nur er weiss, ob eine Unterzeile ansteht: beim Zeichnen kann dort
+// auch der Veraltet-Hinweis stehen, beim Aufteilen der Seite darf er NICHT mitzaehlen
+// -- sonst spraenge die Aufteilung, sobald ein Wert veraltet.
+inline KachelZeilen kachelZeilenAus(const Slot& s, bool mitUnterzeile) {
+    KachelZeilen z = {};
+    z.mitLabel = (s.label[0] != 0);
+    z.mitZahl = (s.anzeige != ANZEIGE_BALKEN);
+    z.mitBalken = (s.anzeige != ANZEIGE_ZAHL);
+    z.einheitDaneben = s.einheitDaneben && z.mitZahl && (s.unit[0] != 0);
+    z.mitUnterzeile = mitUnterzeile;
+    z.labelStufe = s.labelSize;
+    z.wertStufe = s.wertSize;
+    z.unitStufe = s.unitSize;
+    return z;
+}
+
 struct Config {
     Slot slots[MAX_SLOTS];
     uint8_t layout[MAX_PAGES];  // PageLayout je Seite

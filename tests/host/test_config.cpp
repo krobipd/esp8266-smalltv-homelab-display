@@ -251,6 +251,34 @@ int main() {
                             "\"refreshSec\":30,\"page\":3,\"pos\":0}", frei, 0, g, e4, sizeof(e4)));
     }
 
+    // --- Kachelzeilen aus den Einstellungen eines Slots (B2) ---
+    {
+        Slot z = {};
+        snprintf(z.label, LABEL_LEN, "A");
+        snprintf(z.unit, UNIT_LEN, "%%");
+        z.anzeige = ANZEIGE_BALKEN_ZAHL;
+        z.einheitDaneben = true;
+        z.labelSize = 2;
+        z.wertSize = 6;
+        z.unitSize = 3;
+        const KachelZeilen k = kachelZeilenAus(z, false);
+        assert(k.mitLabel && k.mitZahl && k.mitBalken && k.einheitDaneben && !k.mitUnterzeile);
+        assert(k.labelStufe == 2 && k.wertStufe == 6 && k.unitStufe == 3);
+        // Die Unterzeile kommt vom Aufrufer -- nur er kennt den Laufzeitzustand
+        // (Veraltet-Hinweis). Wuerde sie aus den Einstellungen abgeleitet, spraenge
+        // die Seitenaufteilung, sobald ein Wert veraltet.
+        assert(kachelZeilenAus(z, true).mitUnterzeile);
+        // Ohne Einheit steht sie auch nicht neben dem Wert.
+        Slot ohne = z;
+        ohne.unit[0] = 0;
+        assert(!kachelZeilenAus(ohne, false).einheitDaneben);
+        // Reine Balkenanzeige: keine Zahl, also auch keine Einheit daneben.
+        Slot balken = z;
+        balken.anzeige = ANZEIGE_BALKEN;
+        assert(!kachelZeilenAus(balken, false).mitZahl && kachelZeilenAus(balken, false).mitBalken);
+        assert(!kachelZeilenAus(balken, false).einheitDaneben);
+    }
+
     // --- Rundlauf: Config -> JSON -> Config ergibt dasselbe ---
     Config a = leereConfig();
     a.rotateSec = 25;

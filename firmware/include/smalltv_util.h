@@ -446,22 +446,35 @@ struct KachelZeilen {
     uint8_t unitStufe;
 };
 
-inline int16_t kachelInhaltHoehe(const KachelZeilen& z) {
-    const int16_t hLabel =
-        z.mitLabel ? (int16_t)(gfxZeilenHoehe(z.labelStufe) + KACHEL_ABSTAND) : 0;
-    int16_t hWert = 0;
+// Alle Teilhoehen einer Kachel aus EINER Rechnung. Der Zeichner brauchte sie frueher
+// einzeln und rechnete sie neben kachelInhaltHoehe() ein zweites Mal nach -- zwei
+// Fassungen derselben Formel, die bei jeder Aenderung auseinanderlaufen konnten.
+struct KachelHoehen {
+    int16_t label;
+    int16_t wert;
+    int16_t balken;       // Dicke plus Abstand, 0 ohne Balken
+    int16_t unten;
+    int16_t gesamt;
+    int16_t balkenDicke;  // nur der Balken selbst, zum Zeichnen
+};
+
+inline KachelHoehen kachelHoehen(const KachelZeilen& z) {
+    KachelHoehen h = {};
+    h.label = z.mitLabel ? (int16_t)(gfxZeilenHoehe(z.labelStufe) + KACHEL_ABSTAND) : 0;
     if (z.mitZahl) {
         const int16_t hZahl = gfxZeilenHoehe(z.wertStufe);
         const int16_t hEinheit = z.einheitDaneben ? gfxZeilenHoehe(z.unitStufe) : 0;
-        hWert = (hZahl > hEinheit) ? hZahl : hEinheit;
+        h.wert = (hZahl > hEinheit) ? hZahl : hEinheit;
     }
     // Ohne Zahl darf der Balken dicker sein -- er ist dann die einzige Aussage.
-    const int16_t balkenH = (int16_t)(z.mitZahl ? 10 : 22);
-    const int16_t hBalken = z.mitBalken ? (int16_t)(balkenH + KACHEL_ABSTAND) : 0;
-    const int16_t hUnten =
-        z.mitUnterzeile ? (int16_t)(gfxZeilenHoehe(z.unitStufe) + KACHEL_ABSTAND) : 0;
-    return (int16_t)(hLabel + hWert + hBalken + hUnten);
+    h.balkenDicke = (int16_t)(z.mitZahl ? 10 : 22);
+    h.balken = z.mitBalken ? (int16_t)(h.balkenDicke + KACHEL_ABSTAND) : 0;
+    h.unten = z.mitUnterzeile ? (int16_t)(gfxZeilenHoehe(z.unitStufe) + KACHEL_ABSTAND) : 0;
+    h.gesamt = (int16_t)(h.label + h.wert + h.balken + h.unten);
+    return h;
 }
+
+inline int16_t kachelInhaltHoehe(const KachelZeilen& z) { return kachelHoehen(z).gesamt; }
 
 // Hoehe der OBEREN Kachel bei zwei Werten uebereinander.
 //

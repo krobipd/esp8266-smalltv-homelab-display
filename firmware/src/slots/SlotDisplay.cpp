@@ -137,15 +137,10 @@ auto kachelBreite(PageLayout layout) -> int16_t {
 // Hoehe, die eine Kachel nach den EINSTELLUNGEN braucht -- bewusst ohne Laufzeitzustand.
 // Der Veraltet-Hinweis kaeme und ginge, und mit ihm spraenge die Aufteilung der Seite.
 auto inhaltHoehe(const Slot& s) -> int16_t {
-    KachelZeilen z = {};
-    z.mitLabel = (s.label[0] != 0);
-    z.mitZahl = (s.anzeige != ANZEIGE_BALKEN);
-    z.mitBalken = (s.anzeige != ANZEIGE_ZAHL);
-    z.einheitDaneben = s.einheitDaneben && z.mitZahl && s.unit[0] != 0;
+    KachelZeilen z = kachelZeilenAus(s, false);
+    // Hier zaehlt nur, was aus den Einstellungen folgt: die Einheit in eigener Zeile.
+    // Der Veraltet-Hinweis (Laufzeit) darf die Aufteilung nicht bewegen.
     z.mitUnterzeile = (s.unit[0] != 0) && !z.einheitDaneben;
-    z.labelStufe = s.labelSize;
-    z.wertStufe = s.wertSize;
-    z.unitStufe = s.unitSize;
     return kachelInhaltHoehe(z);
 }
 
@@ -200,60 +195,22 @@ auto farbeFuer(const Slot& s, const SlotLaufzeit& l, bool veraltet) -> uint16_t 
     return s.color;
 }
 
-/// Zeichnet Text linksbuendig ab x und schneidet ab, was ueber maxBreite hinausginge.
-/// Gegenstueck zu textMittig fuer die Zeile "Wert Einheit", in der zwei Schriftstufen
-/// nebeneinander stehen und deshalb nicht gemeinsam zentriert werden koennen.
-void textAb(Arduino_GFX* gfx, const char* text, int16_t x, int16_t y, int16_t maxBreite,
-            uint8_t groesse, uint16_t farbe) {
-    if (text == nullptr || text[0] == 0 || maxBreite <= 0) {
+/// Zeichnet Text in einer Kachel: linksbuendig ab x oder mittig in der Breite w.
+/// Was ueber w hinausginge, wird ABGESCHNITTEN, nie verkleinert -- der Nutzer sieht
+/// das sofort und stellt die Schriftstufe kleiner; eine stille Verkleinerung wuerde
+/// ihm die Entscheidung wegnehmen.
+///
+/// Vorher standen dafuer zwei fast gleiche Funktionen nebeneinander (textAb, textMittig);
+/// sie unterschieden sich nur in der Startspalte.
+static void textZeichnen(Arduino_GFX* gfx, const char* text, int16_t x, int16_t y, int16_t w,
+                         uint8_t groesse, uint16_t farbe, bool mittig) {
+    if (text == nullptr || text[0] == 0 || w <= 0) {
         return;
     }
     const int16_t zeichenBreite = gfxZeichenBreite(groesse);
     if (zeichenBreite <= 0) {
         return;
     }
-    const int16_t passt = (int16_t)(maxBreite / zeichenBreite);
-    if (passt <= 0) {
-        return;
-    }
-
-    // UTF-8 -> Zeichensatz des Displays (Gradzeichen, Umlaute). Nicht darstellbares
-    // kommt hier nicht an, config_codec weist es beim Speichern ab; kaeme es doch,
-    // endet die Zeile vor dem fremden Zeichen statt in Muell.
-    char font[32];
-    utf8NachFont(text, font, sizeof(font));
-
-    char gekuerzt[24];
-    size_t n = strlen(font);
-    if (n > (size_t)passt) {
-        n = (size_t)passt;
-    }
-    if (n > sizeof(gekuerzt) - 1) {
-        n = sizeof(gekuerzt) - 1;
-    }
-    memcpy(gekuerzt, font, n);
-    gekuerzt[n] = 0;
-
-    gfx->setTextSize(groesse);
-    gfx->setTextColor(farbe);
-    gfx->setCursor(x, y);
-    gfx->print(gekuerzt);
-}
-
-/// Zeichnet Text mittig in einem Bereich.
-void textMittig(Arduino_GFX* gfx, const char* text, int16_t x, int16_t y, int16_t w, uint8_t groesse,
-                uint16_t farbe) {
-    if (text == nullptr || text[0] == 0) {
-        return;
-    }
-    const int16_t zeichenBreite = (int16_t)(6 * groesse);
-    if (zeichenBreite <= 0) {
-        return;
-    }
-
-    // Auf die Kachelbreite kuerzen. Ohne diese Begrenzung laeuft ein langer Wert in die
-    // Nachbarkachel oder wird von der Bibliothek am Bildschirmrand umgebrochen -- beides
-    // zerstoert fremde Kacheln, die sich fuer den Nutzer nicht erklaeren lassen.
     const int16_t passt = (int16_t)(w / zeichenBreite);
     if (passt <= 0) {
         return;
@@ -276,15 +233,32 @@ void textMittig(Arduino_GFX* gfx, const char* text, int16_t x, int16_t y, int16_
     memcpy(gekuerzt, font, n);
     gekuerzt[n] = 0;
 
-    const int16_t textBreite = (int16_t)((int16_t)n * zeichenBreite);
-    int16_t startX = (int16_t)(x + (w - textBreite) / 2);
-    if (startX < x) {
-        startX = x;
+    int16_t startX = x;
+    if (mittig) {
+        const int16_t textBreite = (int16_t)((int16_t)n * zeichenBreite);
+        startX = (int16_t)(x + (w - textBreite) / 2);
+        if (startX < x) {
+            startX = x;
+        }
     }
+
     gfx->setTextSize(groesse);
     gfx->setTextColor(farbe);
     gfx->setCursor(startX, y);
     gfx->print(gekuerzt);
+}
+
+/// Linksbuendig ab x -- fuer die Zeile "Wert Einheit", in der zwei Schriftstufen
+/// nebeneinander stehen und deshalb nicht gemeinsam zentriert werden koennen.
+static void textAb(Arduino_GFX* gfx, const char* text, int16_t x, int16_t y, int16_t maxBreite,
+                   uint8_t groesse, uint16_t farbe) {
+    textZeichnen(gfx, text, x, y, maxBreite, groesse, farbe, false);
+}
+
+/// Mittig im Bereich x..x+w.
+static void textMittig(Arduino_GFX* gfx, const char* text, int16_t x, int16_t y, int16_t w,
+                       uint8_t groesse, uint16_t farbe) {
+    textZeichnen(gfx, text, x, y, w, groesse, farbe, true);
 }
 
 void zeichneKachel(uint8_t index, bool rahmen) {
@@ -311,8 +285,11 @@ void zeichneKachel(uint8_t index, bool rahmen) {
     const bool veraltet = SlotRuntime::veraltet(index);
     const uint16_t farbe = farbeFuer(s, l, veraltet);
 
-    const bool mitBalken = (s.anzeige != ANZEIGE_ZAHL);
-    const bool mitZahl = (s.anzeige != ANZEIGE_BALKEN);
+    // Was die Kachel zeigt, steht in EINER Rechnung (kachelZeilenAus). Die Unterzeile
+    // kommt weiter unten dazu -- sie haengt am Laufzeitzustand, nicht an den Einstellungen.
+    const KachelZeilen merkmale = kachelZeilenAus(s, false);
+    const bool mitBalken = merkmale.mitBalken;
+    const bool mitZahl = merkmale.mitZahl;
 
     // Wert -- oder ein Strich, solange nichts Belastbares vorliegt.
     // Bewusst kein "0": eine fehlgeschlagene Abfrage darf nie wie ein Messwert aussehen.
@@ -322,7 +299,7 @@ void zeichneKachel(uint8_t index, bool rahmen) {
     // Sekunde ein Neuzeichnen erzwingen, ohne etwas Nuetzliches zu sagen.
     // Neben dem Wert kann die Einheit nur stehen, wenn es einen Wert gibt (bei reiner
     // Balkenanzeige gibt es keinen) und wenn ueberhaupt eine eingetragen ist.
-    const bool einheitDaneben = s.einheitDaneben && mitZahl && s.unit[0] != 0;
+    const bool einheitDaneben = merkmale.einheitDaneben;
 
     char unten[32];
     const uint32_t alterMin = alterMinStufe(index, veraltet);
@@ -347,30 +324,18 @@ void zeichneKachel(uint8_t index, bool rahmen) {
     // ganze Block mittig gesetzt, statt wie frueher jede Zeile einzeln an der Mitte
     // auszurichten. Sonst ueberdeckten sich Zeilen, sobald die Stufen auseinanderliegen.
     const int16_t ABSTAND = KACHEL_ABSTAND;
-    const int16_t balkenH = (int16_t)(mitZahl ? 10 : 22);
 
-    // Dieselbe Formel, die auch die Seite aufteilt (kachelInhaltHoehe) -- hier nur mit
-    // dem Laufzeitzustand gefuettert, weil der Veraltet-Hinweis eine Zeile belegt.
-    KachelZeilen zeilen = {};
-    zeilen.mitLabel = (s.label[0] != 0);
-    zeilen.mitZahl = mitZahl;
-    zeilen.mitBalken = mitBalken;
+    // Dieselbe Formel, die auch die Seite aufteilt -- hier mit dem Laufzeitzustand
+    // gefuettert, weil der Veraltet-Hinweis eine Zeile belegt. Alle Teilhoehen kommen
+    // aus diesem einen Aufruf; frueher stand die Rechnung hier ein zweites Mal.
+    KachelZeilen zeilen = merkmale;
     zeilen.mitUnterzeile = (unten[0] != 0);
-    zeilen.einheitDaneben = einheitDaneben;
-    zeilen.labelStufe = s.labelSize;
-    zeilen.wertStufe = s.wertSize;
-    zeilen.unitStufe = s.unitSize;
-
-    const int16_t hLabel = zeilen.mitLabel ? (int16_t)(8 * s.labelSize + ABSTAND) : 0;
-    const int16_t hWert =
-        mitZahl ? (einheitDaneben ? (int16_t)((8 * s.wertSize > 8 * s.unitSize)
-                                                  ? 8 * s.wertSize
-                                                  : 8 * s.unitSize)
-                                  : (int16_t)(8 * s.wertSize))
-                : 0;
-    const int16_t hBalken = mitBalken ? (int16_t)(balkenH + ABSTAND) : 0;
-
-    const int16_t gesamt = kachelInhaltHoehe(zeilen);
+    const KachelHoehen hoehen = kachelHoehen(zeilen);
+    const int16_t hLabel = hoehen.label;
+    const int16_t hWert = hoehen.wert;
+    const int16_t hBalken = hoehen.balken;
+    const int16_t balkenH = hoehen.balkenDicke;
+    const int16_t gesamt = hoehen.gesamt;
     // Laeuft der Block ueber die Kachel hinaus, beginnt er am oberen Rand statt
     // hochgeschoben zu werden -- oben abgeschnitten ist schlechter lesbar als unten.
     int16_t cursorY = (int16_t)(y + (h - gesamt) / 2);

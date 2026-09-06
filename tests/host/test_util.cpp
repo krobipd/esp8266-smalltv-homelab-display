@@ -304,6 +304,28 @@ int main() {
         assert(slotTextValid("\xce\xa9", FIELD_LEN));       // Feldname wird nie gezeichnet: bleibt erlaubt
     }
 
+    // --- Kachelzeilen: EINE Rechnung fuer Zeichnen und Seitenaufteilung ---
+    {
+        KachelZeilen z = {};
+        z.mitLabel = true;
+        z.mitZahl = true;
+        z.mitBalken = true;
+        z.einheitDaneben = true;
+        z.labelStufe = 2;
+        z.wertStufe = 6;
+        z.unitStufe = 3;
+        const KachelHoehen h = kachelHoehen(z);
+        assert(h.label == 20 && h.wert == 48 && h.balken == 14 && h.unten == 0);
+        assert(h.gesamt == h.label + h.wert + h.balken + h.unten);
+        assert(h.balkenDicke == 10);
+        // Ohne Zahl ist der Balken die einzige Aussage und darf dicker sein.
+        KachelZeilen b = {};
+        b.mitBalken = true;
+        assert(kachelHoehen(b).balkenDicke == 22);
+        // Die alte Einstiegsstelle liefert weiter dieselbe Zahl.
+        assert(kachelInhaltHoehe(z) == h.gesamt);
+    }
+
     printf("OK\n");
     return 0;
 }
