@@ -26,6 +26,7 @@
 #include "project_version.h"
 #include "display/DisplayManager.h"
 #include "config/ConfigManager.h"
+#include "hardware/Pins.h"
 
 
 extern ConfigManager configManager;

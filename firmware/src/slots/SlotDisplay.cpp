@@ -22,6 +22,7 @@
 #include <time.h>
 
 #include "config/ConfigManager.h"
+#include "hardware/Pins.h"
 #include "display/DisplayManager.h"
 #include "slots/SlotRuntime.h"
 

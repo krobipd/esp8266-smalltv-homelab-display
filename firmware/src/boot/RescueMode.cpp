@@ -27,6 +27,7 @@
 #include "abbild_art.h"
 #include "project_version.h"
 #include "config/ConfigManager.h"
+#include "hardware/Pins.h"
 #include "display/DisplayManager.h"
 #include "web/Webserver.h"
 
@@ -46,8 +47,6 @@ struct RtcBootData {
 
 static_assert(sizeof(RtcBootData) % 4 == 0, "RTC data must be 4-byte aligned");
 
-extern const char* AP_SSID;
-extern const char* AP_PASSWORD;
 static constexpr uint16_t RESCUE_PORT = 80;
 
 static constexpr int16_t DBG_PADDING = 5;

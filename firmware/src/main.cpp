@@ -26,6 +26,7 @@
 #include <Logger.h>
 #include "project_version.h"
 #include "config/ConfigManager.h"
+#include "hardware/Pins.h"
 #include "wireless/WiFiManager.h"
 #include "slots/SlotApi.h"
 #include "slots/SlotDisplay.h"
@@ -39,13 +40,6 @@
 #include <array>
 
 ConfigManager configManager;
-const char* AP_SSID = "GeekMagic";
-// Absichtlich kurz und ohne Sonderzeichen: Dieses Passwort wird genau dann gebraucht,
-// wenn das Geraet sein WLAN verloren hat -- also auf einem Handy, im Stehen, unter
-// Zeitdruck. Das geerbte "$str0ngPa$$w0rd" der Times-Z-Basis war dort eine Zumutung
-// (Nutzer, 02.09.2026). WPA2 verlangt mindestens 8 Zeichen, darunter geht es nicht.
-// Der AP laeuft nur, solange kein bekanntes WLAN erreichbar ist.
-const char* AP_PASSWORD = "smalltv123";
 WiFiManager* wifiManager = nullptr;
 ESP8266HTTPUpdateServer httpUpdater;
 static constexpr const char* KV_SALT_STR = "GeekMagicOpenFirmwareIsAwesome";

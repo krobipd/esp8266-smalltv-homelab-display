@@ -148,7 +148,6 @@ auto ConfigManager::getApiToken() const -> const char* { return api_token.c_str(
  *
  * @return The rotation of the LCD
  */
-auto ConfigManager::getLCDRotation() const -> uint8_t { return lcd_rotation; }
 
 /**
  * @brief Set LCD rotation in memory
