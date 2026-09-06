@@ -18,6 +18,20 @@ static const size_t LABEL_LEN = 24;
 // Kosten: 8 Byte je Wert, bei 12 Werten also 96 Byte Arbeitsspeicher.
 static const size_t UNIT_LEN = 16;
 static const uint8_t MAX_SLOTS = 12;
+
+// ---------- Grenzwerte an EINER Stelle ----------
+//
+// Dieselben Zahlen standen in der Firmware, in der Oberflaeche (als Zahl im Formular),
+// im Mock und in den Fehlermeldungen -- vier Orte, die auseinanderlaufen konnten. Die
+// Firmware liefert sie jetzt mit der Konfiguration aus (GET /slots, Feld "limits"), die
+// Oberflaeche liest sie von dort, und ein Host-Test vergleicht sie mit dem Mock.
+static const uint16_t REFRESH_SEC_MIN = 5;
+static const uint16_t REFRESH_SEC_MAX = 3600;
+static const uint16_t ROTATE_SEC_MIN = 3;      // 0 heisst "kein Wechsel" und ist erlaubt
+static const uint16_t ROTATE_SEC_MAX = 3600;
+static const uint8_t DECIMALS_MAX = 3;
+static const uint16_t HELL_SEC_MIN = 5;
+static const uint16_t HELL_SEC_MAX = 3600;
 static const uint8_t MAX_PAGES = 4;
 static const uint8_t STALE_FAILS = 3;
 

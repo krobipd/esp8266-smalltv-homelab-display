@@ -105,6 +105,17 @@ def etag_passt(kopfzeile, etag):
 
 START_ZEIT = time.time()
 MAX_SLOTS = 12
+# Dieselben Grenzen wie die Firmware (smalltv_util.h / config_codec.h). run_tests.sh
+# vergleicht diese Tabelle mit tests/host/limits_dump.cpp -- laufen sie auseinander,
+# lehnte das Geraet ab, was der Mock durchwinkt, und der Test verbirgt genau das.
+LIMITS = {
+    "url": 127, "label": 23, "field": 31, "unit": 15,
+    "slots": 12, "pages": 4,
+    "refreshMin": 5, "refreshMax": 3600,
+    "rotateMin": 3, "rotateMax": 3600,
+    "decimalsMax": 3, "hellSecMin": 5, "hellSecMax": 3600,
+    "textStufeMin": 1, "textStufeMax": 10,
+}
 # Was das Display zeichnen kann (Firmware smalltv_util.h, FONT_UMSETZUNG): ASCII plus
 # ° ä ö ü Ä Ö Ü ß. Steuerzeichen lehnt das Geraet in jedem Text ab.
 DISPLAY_ZEICHEN = re.compile(r"^[\x20-\x7e\u00b0\u00e4\u00f6\u00fc\u00c4\u00d6\u00dc\u00df]*$")
@@ -221,7 +232,9 @@ def hole(url, timeout=5):
     """Fuehrt den Abruf aus -- so wie es spaeter das Geraet tut, nicht der Browser."""
     try:
         with urllib.request.urlopen(url, timeout=timeout) as r:
-            return r.status, r.read(512).decode("utf-8", "replace"), None
+            # 1024 wie KOERPER_MAX in der Firmware (SlotRuntime.h). Mit 512 haette der
+            # Mock Antworten abgeschnitten, die das Geraet noch vollstaendig liest.
+            return r.status, r.read(1024).decode("utf-8", "replace"), None
     except urllib.error.HTTPError as e:
         return e.code, "", f"HTTP {e.code}"
     except Exception as e:  # Timeout, DNS, Verbindung abgelehnt
@@ -306,7 +319,8 @@ class Handler(BaseHTTPRequestHandler):
             # Wie handleTokenCheck(): die Passwortpruefung ist oben schon gelaufen.
             return self._json(200, {"status": "ok", "message": "Passwort ist gueltig"})
         if p == "/api/v1/slots":
-            return self._json(200, CONFIG)
+            # Wie handleSlotsGet(): die Konfiguration samt Grenzen (B8).
+            return self._json(200, dict(CONFIG, limits=LIMITS))
         if p == "/api/v1/slots/status":
             # Antwortform wie handleSlotsStatus(): Werte plus Geraetezustand (E11).
             return self._json(200, {"slots": self._status(), "geraet": {
@@ -394,9 +408,16 @@ class Handler(BaseHTTPRequestHandler):
         """Wie die Firmware: der letzte gute Wert bleibt sichtbar, nur sein Alter waechst."""
         if i in LETZTER_WERT:
             wert, zustand, ts = LETZTER_WERT[i]
+            alter = int(time.time() - ts)
             eintrag["value"] = wert
             eintrag["state"] = zustand
-            eintrag["ageSec"] = int(time.time() - ts)
+            eintrag["ageSec"] = alter
+            # Dieselbe Regel wie istVeraltet() in smalltv_util.h: veraltet ist ein Wert
+            # nach drei Fehlversuchen ODER wenn er aelter ist als das Dreifache seines
+            # Intervalls plus 30 s. Der Mock kannte nur die Fehlversuche.
+            refresh = CONFIG["slots"][i]["refreshSec"]
+            if alter > refresh * 3 + 30:
+                eintrag["stale"] = True
 
     def _iobroker(self, p):
         rest = p[len("/rest-api/v1/state/"):]
@@ -552,15 +573,27 @@ class Handler(BaseHTTPRequestHandler):
         if err:
             return self._json(200, {"ok": False, "httpStatus": code, "error": err,
                                     "preview": "", "fields": []})
-        return self._json(200, {"ok": code == 200, "httpStatus": code,
-                                "preview": body[:512], "fields": felder_aus(body)})
+        if code != 200:
+            # Wie die Firmware: kein Erfolg heisst leere Vorschau, keine Feldliste und
+            # eine Fehlermeldung. Der Mock lieferte hier frueher die Vorschau mit --
+            # der Assistent haette Felder angeboten, die das Geraet nie sieht.
+            return self._json(200, {"ok": False, "httpStatus": code,
+                                    "error": "HTTP %d" % code, "preview": "", "fields": []})
+        return self._json(200, {"ok": True, "httpStatus": code,
+                                "preview": body[:1024], "fields": felder_aus(body)})
 
     def _einstellungen(self):
-        """Bildet settingsFromDoc der Firmware nach -- inklusive der Ablehnung."""
+        """Bildet settingsFromDoc der Firmware nach -- inklusive der Ablehnung.
+
+        ERST pruefen, DANN zuweisen: Frueher wurde rotateSec schon uebernommen, waehrend
+        eine spaetere Pruefung die Anfrage noch ablehnen konnte. Das Geraet arbeitet
+        transaktional; ein Mock, der halb uebernimmt, verbirgt genau solche Fehler.
+        """
         d = self._body()
         r = int(d.get("rotateSec", CONFIG["rotateSec"]))
-        if r != 0 and not 3 <= r <= 3600:
-            return self._fehler(400, "Wechselintervall nur 0 (aus) oder 3 bis 3600 Sekunden")
+        if r != 0 and not LIMITS["rotateMin"] <= r <= LIMITS["rotateMax"]:
+            return self._fehler(400, "Wechselintervall nur 0 (aus) oder %d bis %d Sekunden"
+                                % (LIMITS["rotateMin"], LIMITS["rotateMax"]))
 
         neu = list(CONFIG["layout"])
         for i, l in enumerate(d.get("layout", [])[:MAX_PAGES]):
@@ -568,25 +601,24 @@ class Handler(BaseHTTPRequestHandler):
                 return self._fehler(400, "Unbekanntes Seitenlayout")
             neu[i] = int(l)
 
+        # Gegen ALLE eingerichteten Werte pruefen -- auch gegen abgeschaltete: Sie halten
+        # ihren Platz, genau wie in der Firmware.
         for s in CONFIG["slots"]:
-            if s["enabled"] and s["url"] and s["pos"] > PLATZGRENZE[neu[s["page"] - 1]]:
+            if s["url"] and s["pos"] > PLATZGRENZE[neu[s["page"] - 1]]:
                 return self._fehler(
                     400, "Ein Wert liegt auf einem Platz, den das neue Layout nicht hat")
 
-        CONFIG["rotateSec"] = r
-        # Aufteilung wie die Firmware pruefen: 0 (automatisch) oder 20..80. Ein laxerer
-        # Mock liesse Werte durch, die das Geraet ablehnt.
         neueTeilung = list(CONFIG["teilung"])
-        for i, t in enumerate(d.get("teilung", [])[:MAX_PAGES]):
-            t = int(t)
-            if t != 0 and not 20 <= t <= 80:
+        for i, teil in enumerate(d.get("teilung", [])[:MAX_PAGES]):
+            teil = int(teil)
+            if teil != 0 and not 20 <= teil <= 80:
                 return self._fehler(400, "Aufteilung nur 0 (automatisch) oder 20 bis 80 Prozent")
-            neueTeilung[i] = t
+            neueTeilung[i] = teil
 
-        CONFIG["layout"] = neu
-        CONFIG["teilung"] = neueTeilung
-        CONFIG["colorWarn"] = int(d.get("colorWarn", CONFIG["colorWarn"]))
-        CONFIG["colorAlarm"] = int(d.get("colorAlarm", CONFIG["colorAlarm"]))
+        warn = int(d.get("colorWarn", CONFIG["colorWarn"]))
+        alarm = int(d.get("colorAlarm", CONFIG["colorAlarm"]))
+        if not (0 <= warn <= 0xFFFF and 0 <= alarm <= 0xFFFF):
+            return self._fehler(400, "Farbwert ausserhalb des Bereichs")
 
         von = int(d.get("nachtVon", CONFIG["nachtVon"]))
         bis = int(d.get("nachtBis", CONFIG["nachtBis"]))
@@ -599,8 +631,19 @@ class Handler(BaseHTTPRequestHandler):
         if modus == 1 and not hurl.startswith("http://"):
             return self._fehler(400, "Schalter braucht eine gueltige Adresse (nur http://)")
         hsec = int(d.get("hellSec", CONFIG["hellSec"]))
-        if modus == 1 and not 5 <= hsec <= 3600:
-            return self._fehler(400, "Schalter-Intervall nur 5 bis 3600 Sekunden")
+        # Immer pruefen, nicht nur bei aktivem Schalter -- so macht es die Firmware auch.
+        if not LIMITS["hellSecMin"] <= hsec <= LIMITS["hellSecMax"]:
+            return self._fehler(400, "Schalter-Intervall nur %d bis %d Sekunden"
+                                % (LIMITS["hellSecMin"], LIMITS["hellSecMax"]))
+
+        # ---- Ab hier wird uebernommen; ab hier kann nichts mehr scheitern. ----
+        CONFIG["rotateSec"] = r
+        CONFIG["layout"] = neu
+        CONFIG["teilung"] = neueTeilung
+        CONFIG["colorWarn"] = warn
+        CONFIG["colorAlarm"] = alarm
+        CONFIG["nachtVon"] = von
+        CONFIG["nachtBis"] = bis
         CONFIG["hellModus"] = modus
         CONFIG["hellUrl"] = hurl
         CONFIG["hellField"] = str(d.get("hellField", CONFIG["hellField"]))
@@ -629,14 +672,16 @@ class Handler(BaseHTTPRequestHandler):
         label = str(d.get("label", ""))
         feld = str(d.get("field", ""))
         einheit = str(d.get("unit", ""))
-        if len(url.encode("utf-8")) > 127:
-            return self._fehler(400, "URL ist zu lang (max 127 Zeichen)")
-        if len(label.encode("utf-8")) > 23:
-            return self._fehler(400, "Beschriftung ist zu lang (max 23 Zeichen, Umlaute zaehlen doppelt)")
-        if len(feld.encode("utf-8")) > 31:
-            return self._fehler(400, "Feldname ist zu lang (max 31 Zeichen)")
-        if len(einheit.encode("utf-8")) > 15:
-            return self._fehler(400, "Einheit ist zu lang (max 15 Zeichen, Umlaute zaehlen doppelt)")
+        if len(url.encode("utf-8")) > LIMITS["url"]:
+            return self._fehler(400, "URL ist zu lang (max %d Zeichen)" % LIMITS["url"])
+        if len(label.encode("utf-8")) > LIMITS["label"]:
+            return self._fehler(400, "Beschriftung ist zu lang (max %d Zeichen, Umlaute zaehlen doppelt)"
+                                % LIMITS["label"])
+        if len(feld.encode("utf-8")) > LIMITS["field"]:
+            return self._fehler(400, "Feldname ist zu lang (max %d Zeichen)" % LIMITS["field"])
+        if len(einheit.encode("utf-8")) > LIMITS["unit"]:
+            return self._fehler(400, "Einheit ist zu lang (max %d Zeichen, Umlaute zaehlen doppelt)"
+                                % LIMITS["unit"])
         if not url.startswith("http://"):
             return self._fehler(400, "URL ungueltig (nur http://, max 127 Zeichen)")
         if label and not DISPLAY_ZEICHEN.match(label):
@@ -646,14 +691,23 @@ class Handler(BaseHTTPRequestHandler):
         if einheit and not DISPLAY_ZEICHEN.match(einheit):
             return self._fehler(400, "Einheit ungueltig (zu lang oder Zeichen, das das Display nicht kennt)")
         r = int(d.get("refreshSec") or 0)
-        if not 5 <= r <= 3600:
-            return self._fehler(400, "Intervall nur 5 bis 3600 Sekunden")
+        if not LIMITS["refreshMin"] <= r <= LIMITS["refreshMax"]:
+            return self._fehler(400, "Intervall nur %d bis %d Sekunden"
+                                % (LIMITS["refreshMin"], LIMITS["refreshMax"]))
+        # Was die Firmware ebenfalls prueft, der Mock aber nicht nachbildete:
+        # Nachkommastellen, Farbwert und ein negativer Rasterplatz.
+        nk = int(d.get("decimals") or 0)
+        if not 0 <= nk <= LIMITS["decimalsMax"]:
+            return self._fehler(400, "Nachkommastellen nur 0 bis %d" % LIMITS["decimalsMax"])
+        farbe = int(d.get("color", 0xFFFF))
+        if not 0 <= farbe <= 0xFFFF:
+            return self._fehler(400, "Farbwert ausserhalb des Bereichs")
         seite = int(d.get("page") or 0)
         if not 1 <= seite <= MAX_PAGES:
             return self._fehler(400, "Seite ausserhalb des Bereichs")
         grenze = PLATZGRENZE[CONFIG["layout"][seite - 1]]
         platz = int(d.get("pos") or 0)
-        if platz > grenze:
+        if platz < 0 or platz > grenze:
             return self._fehler(400, "Rasterplatz gibt es in diesem Seitenlayout nicht")
         anzeige = int(d.get("anzeige") or 0)
         if anzeige not in (0, 1, 2):
@@ -690,10 +744,12 @@ class Handler(BaseHTTPRequestHandler):
         if p.startswith("/api/v1/") and self._tokenFehlt():
             return None
         if p.startswith("/api/v1/slots/"):
-            try:
-                i = int(p.rsplit("/", 1)[1])
-            except ValueError:
+            rest = p[len("/api/v1/slots/"):]
+            # Wie UriBraces in der Firmware: EIN Pfadstueck, und der Handler liest daraus
+            # eine Zahl. "/slots/1/2" oder "/slots/007" trifft dort keine Route.
+            if not rest.isdigit() or not 1 <= len(rest) <= 2:
                 return self._fehler(400, "Slot-Nummer ungueltig")
+            i = int(rest)
             if not 0 <= i < MAX_SLOTS:
                 return self._fehler(400, "Slot-Nummer ausserhalb des Bereichs")
             CONFIG["slots"][i] = leerer_slot()

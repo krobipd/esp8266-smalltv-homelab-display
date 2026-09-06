@@ -26,6 +26,22 @@ for t in util extract config httpcache abbild; do
 done
 echo "Host-Tests: 5x OK (mit Sanitizern)"
 
+# EINE Autoritaet fuer die Grenzwerte: Die Firmware druckt sie, der Mock haelt sie als
+# Tabelle, die Oberflaeche bekommt sie vom Geraet. Laufen Firmware und Mock auseinander,
+# lehnte das Geraet ab, was der Mock durchwinkt -- und der Test verbaerge genau das (B8).
+c++ -std=c++17 -Wall -Wextra -Werror -I "$ARDUINOJSON" \
+    "$BASIS/tests/host/limits_dump.cpp" -o /tmp/smalltv-limits
+FIRMWARE_LIMITS="$(/tmp/smalltv-limits)"
+MOCK_LIMITS="$(cd "$BASIS" && python3 -c 'import json,sys; sys.path.insert(0,"tools"); import mock_api; print(json.dumps(mock_api.LIMITS))')"
+if ! python3 -c "import json,sys; a=json.loads(sys.argv[1]); b=json.loads(sys.argv[2]); sys.exit(0 if a==b else 1)" \
+        "$FIRMWARE_LIMITS" "$MOCK_LIMITS"; then
+    echo "FEHLER: Grenzwerte von Firmware und Mock laufen auseinander."
+    echo "  Firmware: $FIRMWARE_LIMITS"
+    echo "  Mock:     $MOCK_LIMITS"
+    exit 1
+fi
+echo "Grenzwerte: Firmware und Mock stimmen ueberein"
+
 # Fliesskomma-printf zieht rund 4 KB Programmspeicher nach sich; ein post-Skript
 # haelt es draussen (scripts/strip_float_printf.py). Kommt es zurueck, faellt es hier
 # auf statt erst bei der naechsten Speicherknappheit (N24).

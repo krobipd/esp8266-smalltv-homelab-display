@@ -82,6 +82,16 @@ function slotsHandler() {
     config: null,
     status: [],
     geraet: null,
+    // Vom Gerät geliefert (GET /slots, Feld "limits"). Der Rückfall gilt nur, solange
+    // die Konfiguration noch nicht geladen ist oder eine ältere Firmware antwortet.
+    limits: {
+      url: 127, label: 23, field: 31, unit: 15,
+      slots: 12, pages: 4,
+      refreshMin: 5, refreshMax: 3600,
+      rotateMin: 3, rotateMax: 3600,
+      decimalsMax: 3, hellSecMin: 5, hellSecMax: 3600,
+      textStufeMin: 1, textStufeMax: 10,
+    },
     laden: true,
     fehler: "",
     meldung: "",
@@ -129,6 +139,11 @@ function slotsHandler() {
           return;
         }
         this.config = d;
+        // Die Grenzen kommen vom Gerät; eine ältere Firmware liefert sie nicht mit,
+        // dann bleiben die Vorgaben stehen.
+        if (d.limits && typeof d.limits === "object") {
+          this.limits = { ...this.limits, ...d.limits };
+        }
         // Startproblem des Geraets (z. B. unlesbare Konfigurationsdatei) sichtbar
         // machen -- sonst wirkt eine leere Konfiguration wie gewollt.
         if (d.warnung) {
@@ -303,8 +318,9 @@ function slotsHandler() {
     async einstellungenSpeichern() {
       this.fehler = "";
       const r = Number(this.eRotate);
-      if (r !== 0 && (r < 3 || r > 3600)) {
-        this.fehler = "Wechselintervall: 0 zum Abschalten, sonst 3 bis 3600 Sekunden.";
+      if (r !== 0 && (r < this.limits.rotateMin || r > this.limits.rotateMax)) {
+        this.fehler =
+          `Wechselintervall: 0 zum Abschalten, sonst ${this.limits.rotateMin} bis ${this.limits.rotateMax} Sekunden.`;
         return;
       }
       if (Number(this.eHellModus) === 1) {
@@ -313,8 +329,8 @@ function slotsHandler() {
           return;
         }
         const hs = Number(this.eHellSec);
-        if (hs < 5 || hs > 3600) {
-          this.fehler = "Schalter-Intervall: 5 bis 3600 Sekunden.";
+        if (hs < this.limits.hellSecMin || hs > this.limits.hellSecMax) {
+          this.fehler = `Schalter-Intervall: ${this.limits.hellSecMin} bis ${this.limits.hellSecMax} Sekunden.`;
           return;
         }
       }
@@ -563,8 +579,8 @@ function slotsHandler() {
         this.fehler = "Die URL muss mit http:// beginnen (verschlüsselte Verbindungen kann das Gerät nicht).";
         return false;
       }
-      if (byteLaenge(e.url) > 127) {
-        this.fehler = "Die URL ist zu lang (höchstens 127 Zeichen).";
+      if (byteLaenge(e.url) > this.limits.url) {
+        this.fehler = `Die URL ist zu lang (höchstens ${this.limits.url} Zeichen).`;
         return false;
       }
       // Das Gerät zählt Bytes (UTF-8): Umlaute und ° belegen zwei. Und es zeichnet nur,
@@ -576,16 +592,16 @@ function slotsHandler() {
       const unit = String(e.unit || "");
       const field = String(e.field || "");
       const fremd = " enthält ein Zeichen, das das Display nicht kennt. Möglich: Buchstaben, Ziffern, Satzzeichen, Umlaute, ß und °.";
-      if (byteLaenge(label) > 23) {
-        this.fehler = "Die Beschriftung ist zu lang (höchstens 23 Zeichen, Umlaute und ° zählen doppelt).";
+      if (byteLaenge(label) > this.limits.label) {
+        this.fehler = `Die Beschriftung ist zu lang (höchstens ${this.limits.label} Zeichen, Umlaute und ° zählen doppelt).`;
         return false;
       }
       if (!DISPLAY_ZEICHEN.test(label)) {
         this.fehler = "Die Beschriftung" + fremd;
         return false;
       }
-      if (byteLaenge(unit) > 15) {
-        this.fehler = "Die Einheit ist zu lang (höchstens 15 Zeichen, Umlaute und ° zählen doppelt).";
+      if (byteLaenge(unit) > this.limits.unit) {
+        this.fehler = `Die Einheit ist zu lang (höchstens ${this.limits.unit} Zeichen, Umlaute und ° zählen doppelt).`;
         return false;
       }
       if (!DISPLAY_ZEICHEN.test(unit)) {
@@ -593,8 +609,8 @@ function slotsHandler() {
         return false;
       }
       // Der Feldname wird nie gezeichnet: nur die Länge und keine Steuerzeichen.
-      if (byteLaenge(field) > 31) {
-        this.fehler = "Der Feldname ist zu lang (höchstens 31 Zeichen).";
+      if (byteLaenge(field) > this.limits.field) {
+        this.fehler = `Der Feldname ist zu lang (höchstens ${this.limits.field} Zeichen).`;
         return false;
       }
       if (!OHNE_STEUERZEICHEN.test(field)) {

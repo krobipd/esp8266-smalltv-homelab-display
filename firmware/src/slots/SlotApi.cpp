@@ -105,6 +105,25 @@ void handleSlotsGet(Webserver* webserver) {
     if (g_ladeWarnung[0] != 0) {
         doc["warnung"] = g_ladeWarnung;
     }
+    // Die Grenzen mitliefern, statt sie in der Oberflaeche noch einmal als Zahl zu
+    // hinterlegen: Sie standen bisher in der Firmware, im Formular und im Mock
+    // nebeneinander und konnten auseinanderlaufen (B8).
+    JsonObject l = doc["limits"].to<JsonObject>();
+    l["url"] = URL_LEN - 1;
+    l["label"] = LABEL_LEN - 1;
+    l["field"] = FIELD_LEN - 1;
+    l["unit"] = UNIT_LEN - 1;
+    l["slots"] = MAX_SLOTS;
+    l["pages"] = MAX_PAGES;
+    l["refreshMin"] = REFRESH_SEC_MIN;
+    l["refreshMax"] = REFRESH_SEC_MAX;
+    l["rotateMin"] = ROTATE_SEC_MIN;
+    l["rotateMax"] = ROTATE_SEC_MAX;
+    l["decimalsMax"] = DECIMALS_MAX;
+    l["hellSecMin"] = HELL_SEC_MIN;
+    l["hellSecMax"] = HELL_SEC_MAX;
+    l["textStufeMin"] = MIN_TEXT_STUFE;
+    l["textStufeMax"] = MAX_TEXT_STUFE;
     sendeJson(webserver, HTTP_CODE_OK, doc);
 }
 

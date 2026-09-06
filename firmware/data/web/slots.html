@@ -128,10 +128,10 @@
               <template x-if="Number(eHellModus) === 1">
                 <div>
                   <label for="hurl">Adresse des Schalters</label>
-                  <input id="hurl" type="url" maxlength="127" x-model="eHellUrl"
+                  <input id="hurl" type="url" :maxlength="limits.url" x-model="eHellUrl"
                          placeholder="http://192.0.2.10:8082/rest-api/v1/state/…/plain" />
                   <label for="hfield">Feld (leer = ganze Antwort)</label>
-                  <input id="hfield" type="text" maxlength="31" x-model="eHellField" />
+                  <input id="hfield" type="text" :maxlength="limits.field" x-model="eHellField" />
                   <label for="hsec">Wie oft abfragen? (Sekunden)</label>
                   <input id="hsec" type="number" min="5" max="3600" x-model.number="eHellSec" />
                   <label for="han">Helligkeit bei „an" (<span x-text="eHellAn"></span> %)</label>
@@ -202,7 +202,7 @@
           <div x-show="schritt === 1">
             <h3>Woher kommt der Wert?</h3>
             <label for="url">Adresse (muss mit http:// beginnen)</label>
-            <input id="url" type="url" maxlength="127" x-model="entwurf.url"
+            <input id="url" type="url" :maxlength="limits.url" x-model="entwurf.url"
                    placeholder="http://192.0.2.10:8082/rest-api/v1/state/…/plain" />
             <p class="muted small">
               Endet die Adresse auf <code>/plain</code>, ist die Antwort direkt der Wert –
@@ -254,10 +254,10 @@
           <div x-show="schritt === 3">
             <h3>Wie soll der Wert heißen?</h3>
             <label for="label">Beschriftung</label>
-            <input id="label" type="text" x-model="entwurf.label" maxlength="23"
+            <input id="label" type="text" x-model="entwurf.label" :maxlength="limits.label"
                    placeholder="z. B. Verbrauch" />
             <label for="unit">Einheit (optional)</label>
-            <input id="unit" type="text" x-model="entwurf.unit" maxlength="15"
+            <input id="unit" type="text" x-model="entwurf.unit" :maxlength="limits.unit"
                    placeholder="z. B. W" />
             <label for="dec">Nachkommastellen</label>
             <select id="dec" x-model.number="entwurf.decimals">
@@ -384,7 +384,7 @@
                 Wert anzeigen
               </label>
               <label for="e-url">Adresse</label>
-              <input id="e-url" type="url" maxlength="127" x-model="entwurf.url" />
+              <input id="e-url" type="url" :maxlength="limits.url" x-model="entwurf.url" />
               <div class="action-row">
                 <button class="btn" @click="testen()" :disabled="testLaeuft">Testen</button>
               </div>
@@ -394,11 +394,11 @@
               </template>
 
               <label for="e-field">Feld (leer = ganze Antwort)</label>
-              <input id="e-field" type="text" x-model="entwurf.field" maxlength="31" />
+              <input id="e-field" type="text" x-model="entwurf.field" :maxlength="limits.field" />
               <label for="e-label">Beschriftung</label>
-              <input id="e-label" type="text" x-model="entwurf.label" maxlength="23" />
+              <input id="e-label" type="text" x-model="entwurf.label" :maxlength="limits.label" />
               <label for="e-unit">Einheit</label>
-              <input id="e-unit" type="text" x-model="entwurf.unit" maxlength="15" />
+              <input id="e-unit" type="text" x-model="entwurf.unit" :maxlength="limits.unit" />
               <label for="e-dec">Nachkommastellen</label>
               <select id="e-dec" x-model.number="entwurf.decimals">
                 <option value="0">0</option><option value="1">1</option>

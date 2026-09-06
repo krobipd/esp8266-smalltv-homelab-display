@@ -178,19 +178,31 @@ inline bool slotFromDoc(JsonDocument& doc, const Config& cfg, uint8_t slotIndex,
 
     // Erst die Rohlaengen pruefen, dann kopieren (siehe rohlaengePasst).
     if (!rohlaengePasst(doc["url"], URL_LEN)) {
-        setErr(errOut, errSize, "URL ist zu lang (max 127 Zeichen)");
+        char meldung[64];
+        snprintf(meldung, sizeof(meldung), "URL ist zu lang (max %u Zeichen)", (unsigned)(URL_LEN - 1));
+        setErr(errOut, errSize, meldung);
         return false;
     }
     if (!rohlaengePasst(doc["label"], LABEL_LEN)) {
-        setErr(errOut, errSize, "Beschriftung ist zu lang (max 23 Zeichen, Umlaute zaehlen doppelt)");
+        char meldung[80];
+        snprintf(meldung, sizeof(meldung),
+                 "Beschriftung ist zu lang (max %u Zeichen, Umlaute zaehlen doppelt)",
+                 (unsigned)(LABEL_LEN - 1));
+        setErr(errOut, errSize, meldung);
         return false;
     }
     if (!rohlaengePasst(doc["field"], FIELD_LEN)) {
-        setErr(errOut, errSize, "Feldname ist zu lang (max 31 Zeichen)");
+        char meldung[64];
+        snprintf(meldung, sizeof(meldung), "Feldname ist zu lang (max %u Zeichen)", (unsigned)(FIELD_LEN - 1));
+        setErr(errOut, errSize, meldung);
         return false;
     }
     if (!rohlaengePasst(doc["unit"], UNIT_LEN)) {
-        setErr(errOut, errSize, "Einheit ist zu lang (max 15 Zeichen, Umlaute zaehlen doppelt)");
+        char meldung[80];
+        snprintf(meldung, sizeof(meldung),
+                 "Einheit ist zu lang (max %u Zeichen, Umlaute zaehlen doppelt)",
+                 (unsigned)(UNIT_LEN - 1));
+        setErr(errOut, errSize, meldung);
         return false;
     }
 
@@ -202,7 +214,10 @@ inline bool slotFromDoc(JsonDocument& doc, const Config& cfg, uint8_t slotIndex,
     kopiereText(s.unit, sizeof(s.unit), doc["unit"]);
 
     if (!slotUrlValid(s.url)) {
-        setErr(errOut, errSize, "URL ungueltig (nur http://, max 127 Zeichen)");
+        char meldung[72];
+        snprintf(meldung, sizeof(meldung), "URL ungueltig (nur http://, max %u Zeichen)",
+                 (unsigned)(URL_LEN - 1));
+        setErr(errOut, errSize, meldung);
         return false;
     }
     // Die Beschriftung darf leer bleiben (seit v0.2.6): Wer eine Seite mit einem
@@ -226,11 +241,15 @@ inline bool slotFromDoc(JsonDocument& doc, const Config& cfg, uint8_t slotIndex,
     }
 
     long wert = 0;
-    if (!leseBereich(doc["decimals"], 0, 0, 3, "Nachkommastellen nur 0 bis 3",
+    char meldung[72];
+    snprintf(meldung, sizeof(meldung), "Nachkommastellen nur 0 bis %u", (unsigned)DECIMALS_MAX);
+    if (!leseBereich(doc["decimals"], 0, 0, DECIMALS_MAX, meldung,
                      wert, errOut, errSize)) return false;
     s.decimals = (uint8_t)wert;
 
-    if (!leseBereich(doc["refreshSec"], 0, 5, 3600, "Intervall nur 5 bis 3600 Sekunden",
+    snprintf(meldung, sizeof(meldung), "Intervall nur %u bis %u Sekunden",
+             (unsigned)REFRESH_SEC_MIN, (unsigned)REFRESH_SEC_MAX);
+    if (!leseBereich(doc["refreshSec"], 0, REFRESH_SEC_MIN, REFRESH_SEC_MAX, meldung,
                      wert, errOut, errSize)) return false;
     s.refreshSec = (uint16_t)wert;
 
@@ -350,8 +369,12 @@ inline bool settingsFromDoc(JsonDocument& doc, Config& cfg, char* errOut, size_t
     snprintf(neuesFeld, sizeof(neuesFeld), "%s", cfg.hellField);
 
     // ---- Pruefen ----
-    if (rotate != 0 && (rotate < 3 || rotate > 3600)) {
-        setErr(errOut, errSize, "Wechselintervall nur 0 (aus) oder 3 bis 3600 Sekunden");
+    if (rotate != 0 && (rotate < ROTATE_SEC_MIN || rotate > ROTATE_SEC_MAX)) {
+        char meldung[80];
+        snprintf(meldung, sizeof(meldung),
+                 "Wechselintervall nur 0 (aus) oder %u bis %u Sekunden",
+                 (unsigned)ROTATE_SEC_MIN, (unsigned)ROTATE_SEC_MAX);
+        setErr(errOut, errSize, meldung);
         return false;
     }
     if (colorWarn < 0 || colorWarn > 0xFFFFL || colorAlarm < 0 || colorAlarm > 0xFFFFL) {
@@ -420,8 +443,11 @@ inline bool settingsFromDoc(JsonDocument& doc, Config& cfg, char* errOut, size_t
     }
     // Immer pruefen, nicht nur bei aktivem Schalter: Ein Wert ausserhalb des Bereichs
     // wuerde beim Giessen in uint16 modulo gekuerzt und stuende dann falsch in der Datei.
-    if (hellSec < 5 || hellSec > 3600) {
-        setErr(errOut, errSize, "Schalter-Intervall nur 5 bis 3600 Sekunden");
+    if (hellSec < HELL_SEC_MIN || hellSec > HELL_SEC_MAX) {
+        char meldung[72];
+        snprintf(meldung, sizeof(meldung), "Schalter-Intervall nur %u bis %u Sekunden",
+                 (unsigned)HELL_SEC_MIN, (unsigned)HELL_SEC_MAX);
+        setErr(errOut, errSize, meldung);
         return false;
     }
     if (von < 0 || von > 23 || bis < 0 || bis > 23) {
