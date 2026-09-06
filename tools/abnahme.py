@@ -67,8 +67,22 @@ class Geraet:
         return dauer, status, json.loads(body) if body.strip().startswith(b"{") else body
 
     def version(self):
+        """Firmware-Version und Cache-Kennung der Oberflaeche.
+
+        Ab v0.5.0 sagt das Geraet seine Version selbst (Status, Feld geraet.version).
+        Vorher liess sie sich nur aus der Cache-Kennung ablesen -- und die haengt seit
+        v0.5.0 am INHALT des Dateisystems, nicht mehr an der Version. Beide Wege bleiben,
+        damit dieses Skript auch gegen aeltere Staende laeuft.
+        """
         _, _, kopf, _ = self._anfrage("/slots.html", timeout=10)
         etag = kopf.get("ETag", "")
+        try:
+            _, _, st = self.hole("/api/v1/slots/status", timeout=10)
+            v = (st.get("geraet") or {}).get("version") if isinstance(st, dict) else None
+            if isinstance(v, str) and re.fullmatch(r"v\d+\.\d+\.\d+", v):
+                return v, etag
+        except Exception:  # noqa: BLE001
+            pass
         m = re.match(r'"(v\d+\.\d+\.\d+)-\d+"', etag)
         return (m.group(1) if m else None), etag
 

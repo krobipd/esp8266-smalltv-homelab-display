@@ -43,6 +43,12 @@ class ConfigManager {
     void setNtpServer(const char* s) {
         if (s) ntp_server = s;
     }
+    /// Zeitzone als POSIX-TZ-Regel (z. B. "CET-1CEST,M3.5.0,M10.5.0/3").
+    /// Leer heisst: die Vorgabe des Geraets, Mitteleuropa.
+    const char* getZeitzone() const { return zeitzone.c_str(); }
+    void setZeitzone(const char* s) {
+        if (s) zeitzone = s;
+    }
 
     // Bewusst oeffentlich: der Rettungsmodus zaehlt darin seine Startversuche, bevor
     // ueberhaupt eine Konfiguration gelesen wurde. Ein Umweg ueber diese Klasse waere
@@ -60,6 +66,7 @@ class ConfigManager {
     // bewusst keine config.json mitbringt und deshalb dieser Wert hier greift.
     uint8_t lcd_rotation = 0;
     std::string ntp_server;
+    std::string zeitzone;
 };
 
 #endif  // CONFIG_MANAGER_H

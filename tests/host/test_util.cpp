@@ -326,6 +326,23 @@ int main() {
         PRUEFE(kachelInhaltHoehe(z) == h.gesamt);
     }
 
+    // --- Zeitzonen-Regel (einstellbar seit v0.5.0) ---
+    {
+        PRUEFE(zeitzoneRegelGueltig("CET-1CEST,M3.5.0,M10.5.0/3"));
+        PRUEFE(zeitzoneRegelGueltig("UTC0"));
+        PRUEFE(zeitzoneRegelGueltig("EST5EDT,M3.2.0,M11.1.0"));
+        PRUEFE(!zeitzoneRegelGueltig(nullptr));
+        PRUEFE(!zeitzoneRegelGueltig(""));
+        PRUEFE(!zeitzoneRegelGueltig("CE"));            // zu kurz
+        PRUEFE(!zeitzoneRegelGueltig("1234"));          // faengt nicht mit Buchstaben an
+        PRUEFE(!zeitzoneRegelGueltig("CET 1CEST"));     // Leerzeichen
+        PRUEFE(!zeitzoneRegelGueltig("CET-1CEST,\tM3"));  // Steuerzeichen
+        char lang[ZEITZONE_LEN + 8];
+        memset(lang, 'A', sizeof(lang) - 1);
+        lang[sizeof(lang) - 1] = 0;
+        PRUEFE(!zeitzoneRegelGueltig(lang));            // laenger als der Puffer
+    }
+
     printf("OK\n");
     return 0;
 }

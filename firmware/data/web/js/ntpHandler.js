@@ -5,6 +5,17 @@ function ntpHandler() {
     lastSyncTime: 0,
     lastOk: false,
     ntpServer: "",
+    zeitzone: "",
+    // Die gängigen Regeln als Auswahl; wer etwas anderes braucht, trägt es von Hand ein.
+    // Das Format ist die POSIX-TZ-Regel, die die C-Bibliothek des Geräts versteht.
+    zeitzonen: [
+      { text: "Mitteleuropa (Berlin, Wien, Zürich)", regel: "CET-1CEST,M3.5.0,M10.5.0/3" },
+      { text: "Westeuropa (London, Lissabon)", regel: "GMT0BST,M3.5.0/1,M10.5.0" },
+      { text: "Osteuropa (Athen, Helsinki)", regel: "EET-2EEST,M3.5.0/3,M10.5.0/4" },
+      { text: "UTC (ohne Sommerzeit)", regel: "UTC0" },
+      { text: "New York", regel: "EST5EDT,M3.2.0,M11.1.0" },
+      { text: "Los Angeles", regel: "PST8PDT,M3.2.0,M11.1.0" },
+    ],
 
     fetchStatus() {
       apiFetch("/api/v1/ntp/status")
@@ -46,6 +57,7 @@ function ntpHandler() {
         .then((r) => r.json())
         .then((data) => {
           this.ntpServer = data.ntp_server || "";
+          this.zeitzone = data.zeitzone || "";
         })
         .catch((err) => {
           console.error("failed to fetch ntp config", err);
@@ -53,7 +65,7 @@ function ntpHandler() {
     },
 
     saveConfig() {
-      const payload = { ntp_server: this.ntpServer };
+      const payload = { ntp_server: this.ntpServer, zeitzone: this.zeitzone };
       apiFetch("/api/v1/ntp/config", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -61,7 +73,8 @@ function ntpHandler() {
       })
         .then((r) => r.json())
         .then((data) => {
-          if (data.status === "ok") {
+          if (data.ok !== false && data.status !== "error") {
+            this.zeitzone = data.zeitzone || this.zeitzone;
             this.lastStatus = "Gespeichert — Synchronisierung angestoßen";
             this.fetchStatus();
           } else {

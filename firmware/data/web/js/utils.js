@@ -34,6 +34,34 @@ const DISPLAY_ZEICHEN = /^[\x20-\x7e\u00b0\u00e4\u00f6\u00fc\u00c4\u00d6\u00dc\u
 // Steuerzeichen lehnt das Gerät in jedem Text ab, auch im nie gezeichneten Feldnamen.
 const OHNE_STEUERZEICHEN = /^[^\x00-\x1f\x7f]*$/;
 
+// Jede Antwort des Geräts nach demselben Muster lesen (D5, seit v0.5.0): `ok` sagt, ob
+// es geklappt hat, `message` sagt es in Worten. Ältere Firmware schickt stattdessen
+// `status`/`error` — beides wird hier mitgelesen, damit die Seite auch im Fenster
+// zwischen Firmware- und Dateisystem-Update funktioniert.
+function ergebnisVon(antwort, daten) {
+  const d = daten && typeof daten === "object" ? daten : {};
+  const ok =
+    typeof d.ok === "boolean"
+      ? d.ok
+      : d.status === "error"
+        ? false
+        : Boolean(antwort && antwort.ok);
+  return { ok, text: d.message || d.error || "" };
+}
+
+// Antwort holen und gleich auswerten: liefert { ok, text, daten }.
+async function apiErgebnis(pfad, optionen) {
+  const antwort = await apiFetch(pfad, optionen);
+  let daten = {};
+  try {
+    daten = await antwort.json();
+  } catch (e) {
+    daten = {};
+  }
+  const e = ergebnisVon(antwort, daten);
+  return { ok: e.ok, text: e.text, daten, status: antwort.status };
+}
+
 // Gemerkt, weil der Kopfbereich nachgeladen wird: Kommt das 401 vor dem Kopf, wird der
 // Hinweis eingeblendet, sobald der Kopf da ist.
 let anmeldungNoetig = false;

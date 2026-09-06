@@ -21,6 +21,8 @@
 
 #include <ArduinoJson.h>
 #include <ESP8266WiFi.h>
+
+#include "project_version.h"
 #include <uri/UriBraces.h>
 
 #include "Logger.h"
@@ -176,7 +178,7 @@ void handleSlotsSave(Webserver* webserver) {
     Logger::info("Slot gespeichert");
 
     JsonDocument antwort;
-    antwort["ok"] = true;
+    setzeErgebnis(antwort, true, "Wert gespeichert");
     sendeJson(webserver, HTTP_CODE_OK, antwort);
 }
 
@@ -217,7 +219,7 @@ void handleSlotsDelete(Webserver* webserver) {
     SlotDisplay::neuZeichnen();
 
     JsonDocument doc;
-    doc["ok"] = true;
+    setzeErgebnis(doc, true, "Wert geloescht");
     sendeJson(webserver, HTTP_CODE_OK, doc);
 }
 
@@ -243,16 +245,13 @@ void handleSlotsTest(Webserver* webserver) {
                                        sizeof(fehler));
 
     JsonDocument doc;
-    doc["ok"] = ok;
+    setzeErgebnis(doc, ok, ok ? "Adresse erreichbar" : fehler);
     doc["httpStatus"] = status;
     // ArduinoJson 7 KOPIERT auch einen const char* ins Dokument (anders als Fassung 6,
     // auf die dieser Kommentar frueher baute). Die Vorschau liegt also kurz doppelt im
     // Heap -- bewusst hingenommen: KOERPER_MAX ist ein Kilobyte, und der Assistent
     // laeuft nur, wenn ein Mensch auf "Testen" drueckt.
     doc["preview"] = ok ? static_cast<const char*>(vorschau) : "";
-    if (!ok) {
-        doc["error"] = fehler;
-    }
 
     // Feldnamen nur anbieten, wenn die Antwort wirklich ein JSON-Objekt ist -- sonst
     // waehlt der Nutzer im Assistenten ein Feld, das es gar nicht gibt.
@@ -288,6 +287,10 @@ void handleSlotsStatus(Webserver* webserver) {
     // Protokoll geschrieben wurden und dort alles andere verdraengten (E11). Hier
     // holt sie ab, wer sie sehen will -- die Werte-Seite zeigt sie unter der Uebersicht.
     JsonObject g = doc["geraet"].to<JsonObject>();
+    // Die Firmware-Version als echte Auskunft. Bis v0.4.3 war sie nur aus der
+    // Cache-Kennung der Oberflaeche abzulesen -- und die haengt seit v0.5.0 am Inhalt
+    // des Dateisystems, nicht mehr an der Version.
+    g["version"] = PROJECT_VER_STR;
     g["freeHeap"] = ESP.getFreeHeap();              // NOLINT(readability-static-accessed-through-instance)
     g["heapFrag"] = ESP.getHeapFragmentation();     // NOLINT(readability-static-accessed-through-instance)
     g["uptimeSec"] = millis() / 1000U;
@@ -364,7 +367,63 @@ void handleSlotsSettings(Webserver* webserver) {
     Logger::info("Seiteneinstellungen gespeichert");
 
     JsonDocument antwort;
-    antwort["ok"] = true;
+    setzeErgebnis(antwort, true, "Einstellungen gespeichert");
+    sendeJson(webserver, HTTP_CODE_OK, antwort);
+}
+
+// Ganze Konfiguration auf einmal uebernehmen (Wiederherstellung einer Sicherung).
+//
+// Vorher lief das ueber Einzelaufrufe: bis zu zwoelf Loeschungen, die Einstellungen und
+// bis zu zwoelf Anlagen -- fuenfundzwanzig Anfragen, von denen JEDE die Konfiguration in
+// den Flash schrieb. Zwischen zwei Anfragen war der Bestand ausserdem halb entfernt und
+// halb angelegt; brach der Vorgang dort ab, blieb genau das stehen.
+//
+// Jetzt: einmal pruefen, einmal uebernehmen, einmal schreiben. Der Einzelweg bleibt
+// bestehen -- eine aeltere Oberflaeche im Fenster zwischen den beiden Flashs benutzt ihn
+// weiter, und fuer das Aendern eines einzelnen Werts ist er der richtige.
+void handleSlotsRestore(Webserver* webserver) {
+    if (g_cfg == nullptr) {
+        sendeFehler(webserver, HTTP_CODE_INTERNAL_ERROR, "Konfiguration nicht geladen");
+        return;
+    }
+
+    JsonDocument doc;
+    if (!leseJsonKoerper(webserver, doc)) {
+        return;
+    }
+    if (!doc["slots"].is<JsonArrayConst>()) {
+        sendeFehler(webserver, HTTP_CODE_BAD_REQUEST, "Sicherung ohne Werte-Liste");
+        return;
+    }
+
+    // Direkt in den laufenden Bestand schreiben und ueber persistiere() sichern: Der
+    // Helfer laedt bei einem Schreibfehler den Stand aus der (atomar geschriebenen und
+    // damit intakten) Datei zurueck und antwortet selbst. Eine zweite Config im Speicher
+    // zu halten haette 3,2 KB dauerhaft gekostet -- ein Zehntel des freien Speichers
+    // fuer einen Vorgang, den ein Mensch alle paar Monate ausloest.
+    configFromDoc(doc, *g_cfg);
+    if (!persistiere(webserver)) {
+        return;
+    }
+
+    // Jeder Platz hat jetzt einen anderen Wert -- alle Laufzeitstaende verwerfen,
+    // sonst stuende an einer Kachel noch die Messung ihres Vorgaengers.
+    for (uint8_t i = 0; i < MAX_SLOTS; i++) {
+        SlotRuntime::zuruecksetzen(i);
+    }
+    SlotRuntime::hellZuruecksetzen();
+    SlotDisplay::helligkeitAnwenden();
+    SlotDisplay::neuZeichnen();
+
+    uint8_t anzahl = 0;
+    for (const auto& s : g_cfg->slots) {
+        if (s.url[0] != 0) anzahl++;
+    }
+    Logger::info("Konfiguration aus Sicherung uebernommen", "Slots");
+
+    JsonDocument antwort;
+    setzeErgebnis(antwort, true, "Sicherung uebernommen");
+    antwort["werte"] = anzahl;
     sendeJson(webserver, HTTP_CODE_OK, antwort);
 }
 
@@ -374,6 +433,7 @@ void SlotApi::registerRoutes(Webserver* webserver) {
     geschuetzt(webserver, "/api/v1/slots/test", HTTP_POST, handleSlotsTest);
     geschuetzt(webserver, "/api/v1/slots/status", HTTP_GET, handleSlotsStatus);
     geschuetzt(webserver, "/api/v1/slots/settings", HTTP_POST, handleSlotsSettings);
+    geschuetzt(webserver, "/api/v1/slots/restore", HTTP_POST, handleSlotsRestore);
 
     // Loeschen adressiert den Slot ueber die URL (/api/v1/slots/<i>) mit einem
     // Platzhalter (UriBraces) -- EINE Route statt zwoelf einzeln registrierter

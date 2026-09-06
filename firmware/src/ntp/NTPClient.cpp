@@ -42,13 +42,13 @@ static volatile bool g_zeitGesetzt = false;
 static constexpr const char* DEFAULT_NTP_SERVER1 = "pool.ntp.org";
 
 /**
- * @brief Zeitzone des Geraets: Mitteleuropa (MEZ/MESZ mit automatischem Wechsel).
+ * @brief Vorgabe der Zeitzone: Mitteleuropa (MEZ/MESZ mit automatischem Wechsel).
  *
- * Fest verdrahtet und bewusst KEINE Einstellung: Das Geraet haengt im Heimnetz seines
- * Besitzers. Ohne diese Regel lief die Uhr in UTC -- der Nachtmodus "22 bis 7 Uhr"
- * dimmte dann real von 23 bis 8 (Winter) bzw. 0 bis 9 Uhr (Sommer).
+ * Seit v0.5.0 einstellbar (POSIX-TZ-Regel, Seite "Uhrzeit"); diese Vorgabe gilt, solange
+ * nichts eingestellt ist. Ohne eine Regel liefe die Uhr in UTC -- der Nachtmodus
+ * "22 bis 7 Uhr" dimmte dann real von 23 bis 8 (Winter) bzw. 0 bis 9 Uhr (Sommer).
  */
-static constexpr const char* TZ_LOKAL = "CET-1CEST,M3.5.0,M10.5.0/3";
+static constexpr const char* TZ_VORGABE = "CET-1CEST,M3.5.0,M10.5.0/3";
 
 /// Bis zum ERSTEN Erfolg wird im Minutentakt neu versucht -- ein Geraet, das nach dem
 /// Boot 6 h ohne Uhrzeit laeuft, haette die ganze Nacht keinen Nachtmodus.
@@ -89,6 +89,30 @@ static constexpr int TM_YEAR_BASE = 1900;
 
 NTPClient::NTPClient() = default;
 
+namespace {
+/// Die gerade gesetzte Regel. Statisch, weil setTZ() global wirkt und es genau eine Uhr gibt.
+char g_zeitzone[ZEITZONE_LEN] = {0};
+}  // namespace
+
+bool NTPClient::zeitzoneGueltig(const char* tz) {
+    // Die Regel selbst steht in smalltv_util.h -- dort ist sie ohne Geraet pruefbar.
+    return zeitzoneRegelGueltig(tz);
+}
+
+void NTPClient::zeitzoneAnwenden(const char* tz) {
+    const char* regel = (tz != nullptr && zeitzoneGueltig(tz)) ? tz : TZ_VORGABE;
+    snprintf(g_zeitzone, sizeof(g_zeitzone), "%s", regel);
+    setTZ(g_zeitzone);
+    Logger::info((String("Zeitzone: ") + g_zeitzone).c_str(), TAG);
+}
+
+const char* NTPClient::zeitzone() {
+    if (g_zeitzone[0] == 0) {
+        snprintf(g_zeitzone, sizeof(g_zeitzone), "%s", TZ_VORGABE);
+    }
+    return g_zeitzone;
+}
+
 /**
  * @brief Initialize the NTP client
  * @param syncIntervalSeconds Sync interval in seconds (default: 6 hours)
@@ -101,8 +125,8 @@ void NTPClient::begin(uint32_t syncIntervalSeconds, uint8_t maxRetries) {
     _maxRetries = maxRetries;
     _lastStatus = "noch nicht synchronisiert";
 
-    // Zeitzone EINMAL setzen -- time() bleibt UTC, localtime() liefert Ortszeit.
-    setTZ(TZ_LOKAL);
+    // Zeitzone setzen -- time() bleibt UTC, localtime() liefert Ortszeit.
+    zeitzoneAnwenden(configManager.getZeitzone());
     settimeofday_cb([]() { g_zeitGesetzt = true; });
 
     Logger::info("NTP client initialized", TAG);
@@ -114,12 +138,13 @@ void NTPClient::begin(uint32_t syncIntervalSeconds, uint8_t maxRetries) {
 void NTPClient::starteSync() {
     g_zeitGesetzt = false;
     // configTime(tz, ...) statt configTime(0, 0, ...): Die Offset-Fassung wuerde die
-    // in begin() gesetzte Zeitzonenregel wieder mit "UTC+0" ueberschreiben.
+    // gesetzte Zeitzonenregel wieder mit "UTC+0" ueberschreiben.
+    const char* tz = NTPClient::zeitzone();
     const char* srv = configManager.getNtpServer();
     if (srv != nullptr && srv[0] != '\0') {
-        configTime(TZ_LOKAL, srv, DEFAULT_NTP_SERVER1);  // eigener Server + Fallback
+        configTime(tz, srv, DEFAULT_NTP_SERVER1);  // eigener Server + Fallback
     } else {
-        configTime(TZ_LOKAL, DEFAULT_NTP_SERVER1);
+        configTime(tz, DEFAULT_NTP_SERVER1);
     }
 
     _syncLaeuft = true;

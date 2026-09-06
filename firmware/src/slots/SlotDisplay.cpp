@@ -264,7 +264,10 @@ static void textMittig(Arduino_GFX* gfx, const char* text, int16_t x, int16_t y,
     textZeichnen(gfx, text, x, y, w, groesse, farbe, true);
 }
 
-void zeichneKachel(uint8_t index, bool rahmen) {
+// hintergrundNoetig = false, wenn der Aufrufer die Flaeche gerade selbst geleert hat.
+// Beim Neuzeichnen einer ganzen Seite faerbt fillScreen bereits alles; jede Kachel noch
+// einmal zu fuellen malt dieselben Punkte ein zweites Mal und flackert sichtbar.
+void zeichneKachel(uint8_t index, bool rahmen, bool hintergrundNoetig) {
     Arduino_GFX* gfx = DisplayManager::getGfx();
     if (gfx == nullptr || g_cfg == nullptr) {
         return;
@@ -279,7 +282,9 @@ void zeichneKachel(uint8_t index, bool rahmen) {
     int16_t h = 0;
     kachelRechteck(*g_cfg, s.page, layout, s.pos, x, y, w, h);
 
-    gfx->fillRect(x, y, w, h, FARBE_HG);
+    if (hintergrundNoetig) {
+        gfx->fillRect(x, y, w, h, FARBE_HG);
+    }
     if (rahmen && layout != LAYOUT_EINS) {
         gfx->drawRect(x, y, w, h, FARBE_RAHMEN);
     }
@@ -435,7 +440,7 @@ void zeichneSeite() {
     for (uint8_t i = 0; i < MAX_SLOTS; i++) {
         const Slot& s = g_cfg->slots[i];
         if (s.enabled && s.url[0] != 0 && s.page == g_seite) {
-            zeichneKachel(i, true);
+            zeichneKachel(i, true, false);  // fillScreen hat die Flaeche schon geleert
         }
     }
 }
@@ -577,7 +582,7 @@ void SlotDisplay::update() {
     for (uint8_t i = 0; i < MAX_SLOTS; i++) {
         const Slot& s = g_cfg->slots[i];
         if (s.enabled && s.url[0] != 0 && s.page == g_seite && kachelVeraendert(i)) {
-            zeichneKachel(i, true);
+            zeichneKachel(i, true, true);  // einzelne Kachel: Flaeche selbst leeren
         }
     }
 }

@@ -26,6 +26,7 @@
 #include "abbild_art.h"
 #include "web/Api.h"
 #include "web/antwort.h"
+#include "web/OtaAblauf.h"
 #include "display/DisplayManager.h"
 #include "slots/SlotApi.h"
 
@@ -37,22 +38,14 @@ extern ConfigManager configManager;
 extern WiFiManager* wifiManager;
 extern NTPClient* ntpClient;
 
-static bool otaError = false;
-static size_t otaSize = 0;
-static String otaStatus;
-static volatile bool otaInProgress = false;
-static volatile bool otaCancelRequested = false;
+// Der Zustand eines laufenden Updates liegt in OtaAblauf -- gemeinsam mit dem
+// Rettungsmodus (N22). Hier bleibt nur, was diesen Weg allein betrifft.
 // Bei einem Upload laufen ZWEI Handler: erst der Upload-Handler (Brocken fuer Brocken),
 // danach der Abschluss-Handler. Lehnt der erste die Anfrage mangels Passwort ab, hat er
 // die 401 bereits gesendet -- der Abschluss darf dann nichts mehr senden, sonst gingen
 // zwei Antworten auf eine Anfrage hinaus.
 static bool otaZugangAbgelehnt = false;
-static size_t otaTotal = 0;
 
-static void otaHandleStart(Webserver* webserver, HTTPUpload& upload, int mode);
-static void otaHandleWrite(HTTPUpload& upload, int mode);
-static void otaHandleEnd(HTTPUpload& upload, int mode);
-static void otaHandleAborted(HTTPUpload& upload, int mode);
 
 static constexpr int WIFI_CONNECT_TIMEOUT_MS = 15000;
 static constexpr int BEARER_LEN = 7;
@@ -179,7 +172,7 @@ void handleTokenCheck(Webserver* webserver) {
  */
 void handleTokenSave(Webserver* webserver) {
     JsonDocument ddoc;
-    if (!leseJsonKoerper(webserver, ddoc, true)) {
+    if (!leseJsonKoerper(webserver, ddoc)) {
         return;
     }
 
@@ -210,11 +203,11 @@ void handleTokenSave(Webserver* webserver) {
  */
 void handleOtaStatus(Webserver* webserver) {
     JsonDocument doc;
-    doc["inProgress"] = otaInProgress;
-    doc["bytesWritten"] = otaSize;
-    doc["totalBytes"] = otaTotal;
-    doc["error"] = otaError;
-    doc["message"] = otaStatus;
+    doc["inProgress"] = OtaAblauf::laeuft();
+    doc["bytesWritten"] = OtaAblauf::geschrieben();
+    doc["totalBytes"] = OtaAblauf::gesamt();
+    doc["error"] = OtaAblauf::fehler();
+    doc["message"] = OtaAblauf::meldung();
     sendeJson(webserver, HTTP_CODE_OK, doc);
 }
 
@@ -222,8 +215,7 @@ void handleOtaStatus(Webserver* webserver) {
  * @brief OTA cancel endpoint
  */
 void handleOtaCancel(Webserver* webserver) {
-    otaCancelRequested = true;
-    otaStatus = "Abbruch angefordert";
+    OtaAblauf::abbruchAnfordern();
     sendeStatus(webserver, HTTP_CODE_OK, "cancelling", "Abbruch angefordert");
 }
 
@@ -284,6 +276,10 @@ void handleNtpStatus(Webserver* webserver) {
 void handleNtpConfigGet(Webserver* webserver) {
     JsonDocument doc;
     doc["ntp_server"] = configManager.getNtpServer();
+    // Die gerade wirksame Regel, nicht das gespeicherte Feld: Ist nichts eingestellt,
+    // steht hier die Vorgabe des Geraets -- sonst zeigte die Seite ein leeres Feld und
+    // der Nutzer wuesste nicht, wonach seine Uhr geht.
+    doc["zeitzone"] = NTPClient::zeitzone();
     sendeJson(webserver, HTTP_CODE_OK, doc);
 }
 
@@ -292,7 +288,7 @@ void handleNtpConfigGet(Webserver* webserver) {
  */
 void handleNtpConfigSet(Webserver* webserver) {
     JsonDocument ddoc;
-    if (!leseJsonKoerper(webserver, ddoc, true)) {
+    if (!leseJsonKoerper(webserver, ddoc)) {
         return;
     }
 
@@ -302,7 +298,20 @@ void handleNtpConfigSet(Webserver* webserver) {
         return;
     }
 
+    // Zeitzone ist freiwillig: Wer das Feld nicht schickt, behaelt seine Einstellung.
+    // Eine leere Angabe setzt auf die Vorgabe des Geraets zurueck.
+    const bool zeitzoneGenannt = ddoc["zeitzone"].is<const char*>();
+    const char* tz = ddoc["zeitzone"] | "";
+    if (zeitzoneGenannt && tz[0] != 0 && !NTPClient::zeitzoneGueltig(tz)) {
+        sendeFehlerStatus(webserver, HTTP_CODE_BAD_REQUEST,
+                          "Zeitzone ungueltig -- erwartet wird eine Regel wie CET-1CEST,M3.5.0,M10.5.0/3");
+        return;
+    }
+
     configManager.setNtpServer(server);
+    if (zeitzoneGenannt) {
+        configManager.setZeitzone(tz);
+    }
     if (!configManager.save()) {
         sendeFehlerStatus(webserver, HTTP_CODE_INTERNAL_ERROR, "Speichern fehlgeschlagen");
         return;
@@ -311,6 +320,11 @@ void handleNtpConfigSet(Webserver* webserver) {
     // Sync nur anstossen, nicht abwarten: syncNow() wuerde bis zu 5 s blockieren
     // (Display, Abrufe und Webserver stuenden still), obwohl loop() den Versuch
     // ohnehin zu Ende fuehrt und /ntp/status das Ergebnis zeigt.
+    if (zeitzoneGenannt) {
+        // Sofort wirksam: Die naechste Ortszeit-Umrechnung (und damit der Nachtmodus)
+        // richtet sich danach, ohne Neustart.
+        NTPClient::zeitzoneAnwenden(configManager.getZeitzone());
+    }
     if (ntpClient != nullptr) {
         ntpClient->syncAnstossen();
     }
@@ -318,6 +332,7 @@ void handleNtpConfigSet(Webserver* webserver) {
     JsonDocument doc;
     doc["status"] = "ok";
     doc["ntp_server"] = server;
+    doc["zeitzone"] = NTPClient::zeitzone();
     sendeJson(webserver, HTTP_CODE_OK, doc);
 }
 
@@ -335,7 +350,7 @@ void handleDisplayRotationGet(Webserver* webserver) {
  */
 void handleDisplayRotationSet(Webserver* webserver) {
     JsonDocument ddoc;
-    if (!leseJsonKoerper(webserver, ddoc, true)) {
+    if (!leseJsonKoerper(webserver, ddoc)) {
         return;
     }
 
@@ -372,6 +387,64 @@ void handleDisplayRotationSet(Webserver* webserver) {
 }
 
 /**
+ * @brief Ein Brocken des Uploads -- der Ablauf selbst steht in OtaAblauf (N22)
+ */
+static void otaBrocken(Webserver* webserver, HTTPUpload& upload, int mode) {
+    switch (upload.status) {
+        case UPLOAD_FILE_START: {
+            Logger::info((String("OTA start: ") + upload.filename).c_str(), "API::OTA");
+            DisplayManager::clearScreen();
+            DisplayManager::meldung("Update laeuft", mode == U_FS ? "Oberflaeche" : "Firmware", 0.0F);
+            const String& md5 = webserver->raw().header("X-Abbild-MD5");
+            OtaAblauf::start(mode, (size_t)upload.contentLength, md5.c_str());
+            break;
+        }
+        case UPLOAD_FILE_WRITE: {
+            const size_t vorher = OtaAblauf::geschrieben();
+            if (!OtaAblauf::schreiben(upload.buf, upload.currentSize)) {
+                if (!OtaAblauf::laeuft()) {
+                    DisplayManager::meldung("Update abgelehnt", "", -1.0F);
+                }
+                break;
+            }
+            // Nur bei sichtbarem Fortschritt neu zeichnen: Jeder Brocken sind 1 bis 2 KB,
+            // ein 450-KB-Abbild waeren sonst dreihundert Balken-Zeichnungen.
+            const float anteil = OtaAblauf::fortschritt();
+            if (anteil >= 0.0F && (OtaAblauf::geschrieben() / 16384) != (vorher / 16384)) {
+                DisplayManager::meldung(nullptr, nullptr, anteil);
+            }
+            break;
+        }
+        case UPLOAD_FILE_END:
+            if (OtaAblauf::abschliessen()) {
+                if (mode == U_FS) {
+                    // Neues Dateisystem einhaengen und die Einrichtung hineinschreiben --
+                    // sonst waere sie nach dem Update weg (N15).
+                    if (LittleFS.begin()) {
+                        const bool uebernommen =
+                            SlotApi::konfigurationSichern() && configManager.save();
+                        Logger::info(uebernommen ? "Konfiguration ins neue Dateisystem uebernommen"
+                                                 : "Konfiguration NICHT uebernommen",
+                                     "API::OTA");
+                    } else {
+                        Logger::error("Neues Dateisystem laesst sich nicht mounten", "API::OTA");
+                    }
+                }
+                DisplayManager::meldung("Update fertig", "Neustart ...", 1.0F);
+            } else {
+                DisplayManager::meldung("Update abgelehnt", "", -1.0F);
+            }
+            break;
+        case UPLOAD_FILE_ABORTED:
+            OtaAblauf::abbrechen("Update abgebrochen");
+            DisplayManager::meldung("Update abgebrochen", "", -1.0F);
+            break;
+        default:
+            break;
+    }
+}
+
+/**
  * @brief Handle OTA upload
  * @param webserver Pointer to the Webserver instance
  * @param mode Update mode U_FLASH U_FS
@@ -381,8 +454,6 @@ void handleDisplayRotationSet(Webserver* webserver) {
 void handleOtaUpload(Webserver* webserver, int mode) {
     HTTPUpload& upload = webserver->raw().upload();
 
-    // requireBearerToken sendet die 401-Antwort selbst -- der frueher hier von Hand
-    // nachgebaute JSON-Block war eine driftanfaellige Kopie davon.
     if (upload.status == UPLOAD_FILE_START) {
         // Bei JEDEM Upload zuruecksetzen. Bliebe der Merker von einem abgewiesenen
         // Versuch stehen (der Client kann nach der 401 einfach auflegen, dann laeuft
@@ -390,43 +461,26 @@ void handleOtaUpload(Webserver* webserver, int mode) {
         // Abbild geschrieben, keine Antwort, kein Neustart -- die Update-Seite haenge.
         otaZugangAbgelehnt = false;
         if (!requireBearerToken(webserver)) {
-            otaError = true;
-            otaStatus = "Nicht angemeldet";
             otaZugangAbgelehnt = true;
             return;
         }
     }
-
-    switch (upload.status) {
-        case UPLOAD_FILE_START:
-            otaHandleStart(webserver, upload, mode);
-            break;
-        case UPLOAD_FILE_WRITE:
-            otaHandleWrite(upload, mode);
-            break;
-        case UPLOAD_FILE_END:
-            otaHandleEnd(upload, mode);
-            break;
-        case UPLOAD_FILE_ABORTED:
-            otaHandleAborted(upload, mode);
-            break;
-        default:
-            break;
+    if (otaZugangAbgelehnt) {
+        return;
     }
+
+    otaBrocken(webserver, upload, mode);
 }
 
 /**
  * @brief Handle OTA finished
- * @param webserver Pointer to the Webserver instance
- *
- * @return void
  */
 void handleOtaFinished(Webserver* webserver) {
     // Hat der Upload-Handler die Anfrage schon mit 401 beantwortet, ist hier Schluss --
     // ohne zweite Antwort auf dieselbe Anfrage.
     if (otaZugangAbgelehnt) {
         otaZugangAbgelehnt = false;
-        otaInProgress = false;
+        OtaAblauf::abmelden();
         return;
     }
     // Kam gar kein Upload an (POST ohne Datei), hat noch niemand geprueft.
@@ -435,19 +489,15 @@ void handleOtaFinished(Webserver* webserver) {
     }
 
     int constexpr rebootDelayMs = 5000;
+    const bool fehler = OtaAblauf::fehler();
 
     JsonDocument doc;
-    // "ok" oder "error" -- vorher stand hier ein englischer Satz ("Upload successful"),
-    // den die Oberflaeche nicht auswerten konnte; sie zeigt weiterhin nur message an (E9).
-    doc["status"] = otaError ? "error" : "ok";
-    doc["message"] = otaStatus;
-
-    otaInProgress = false;
-    otaCancelRequested = false;
-
+    doc["status"] = fehler ? "error" : "ok";
+    doc["message"] = OtaAblauf::meldung();
+    OtaAblauf::abmelden();
     sendeJson(webserver, HTTP_CODE_OK, doc);
 
-    if (!otaError) {
+    if (!fehler) {
         delay(rebootDelayMs);
         ESP.restart();  // NOLINT(readability-static-accessed-through-instance)
     }
@@ -475,7 +525,7 @@ void handleWifiScan(Webserver* webserver) {
  */
 void handleWifiConnect(Webserver* webserver) {
     JsonDocument ddoc;
-    if (!leseJsonKoerper(webserver, ddoc, true)) {
+    if (!leseJsonKoerper(webserver, ddoc)) {
         return;
     }
 
@@ -515,193 +565,6 @@ void handleWifiStatus(Webserver* webserver) {
     resp["ssid"] = connected ? WiFiManager::getConnectedSSID() : "";
     resp["ip"] = connected ? wifiManager->getIP().toString() : "";
     sendeJson(webserver, HTTP_CODE_OK, resp);
-}
-
-/**
- * @brief Handle OTA start
- *
- * @param upload Reference to the HTTPUpload object
- * @param mode Update mode U_FLASH or U_FS
- *
- * @return void
- */
-static void otaHandleStart(Webserver* webserver, HTTPUpload& upload, int mode) {
-    Logger::info((String("OTA start: ") + upload.filename).c_str(), "API::OTA");
-
-    otaError = false;
-    otaSize = 0;
-    otaStatus = "";
-    otaInProgress = true;
-    otaCancelRequested = false;
-    otaTotal = static_cast<size_t>(upload.contentLength);
-
-    DisplayManager::clearScreen();
-    DisplayManager::meldung("Update laeuft", mode == U_FS ? "Oberflaeche" : "Firmware", 0.0F);
-
-    int constexpr security_space = 0x1000;
-    u_int constexpr bin_mask = 0xFFFFF000;
-
-    FSInfo fs_info;
-    LittleFS.info(fs_info);
-    size_t fsSize = fs_info.totalBytes;
-    size_t maxSketchSpace =
-        (ESP.getFreeSketchSpace() - security_space) &  // NOLINT(readability-static-accessed-through-instance)
-        bin_mask;
-    size_t place = (mode == U_FS) ? fsSize : maxSketchSpace;
-
-    if (mode == U_FS) {
-        // Die Partition wird gleich ueberschrieben: Dateisystem aushaengen, wie es der
-        // Update-Server des Frameworks tut (close_all_fs). Ohne das bliebe ein Mount mit
-        // veralteten Metadaten stehen -- und LittleFS.begin() ist bei gemountetem
-        // Dateisystem ein No-op, das "Neu-Mounten" hinterher faende nie statt.
-        close_all_fs();
-    }
-
-    if (!Update.begin(place, mode)) {
-        otaError = true;
-        otaStatus = Update.getErrorString();
-        Logger::error((String("Update.begin failed: ") + otaStatus).c_str(), "API::OTA");
-        if (mode == U_FS) {
-            LittleFS.begin();  // Oberflaeche soll weiterlaufen
-        }
-        return;
-    }
-
-    // Firmware nur mit Pruefsumme: Der Updater prueft sonst nur das erste Byte und
-    // aktiviert auch ein unvollstaendiges Abbild -- ohne Rollback ein Brick ohne Serial.
-    // Fuer das Dateisystem ist die Summe willkommen, aber nicht Pflicht: Ein kaputtes
-    // Dateisystem schaltet /legacyupdate frei, ein kaputtes Programm nicht.
-    const String& md5 = webserver->raw().header("X-Abbild-MD5");
-    if (md5.length() == 32) {
-        Update.setMD5(md5.c_str());
-    } else if (mode == U_FLASH) {
-        Update.end();
-        otaError = true;
-        otaStatus = "Pruefsumme fehlt -- Update-Seite neu laden oder curl mit X-Abbild-MD5";
-        Logger::error(otaStatus.c_str(), "API::OTA");
-    }
-}
-
-/**
- * @brief Handle OTA write
- *
- * @param upload Reference to the HTTPUpload object
- *
- * @return void
- */
-static void otaHandleWrite(HTTPUpload& upload, int mode) {
-    // Erster Brocken: Sagt die Datei selbst, dass sie die falsche Sorte ist, wird sie
-    // abgewiesen, BEVOR ein Byte in den Flash geht. Warum das Geraet das selbst pruefen
-    // muss, obwohl die Oberflaeche es schon tut, steht in abbild_art.h.
-    if (!otaError && otaSize == 0) {
-        const AbbildArt erwartet = (mode == U_FS) ? ABBILD_DATEISYSTEM : ABBILD_FIRMWARE;
-        const AbbildArt erkannt = erkenneAbbild(upload.buf, upload.currentSize);
-        if (erkannt != erwartet) {
-            Update.end();
-            if (mode == U_FS) {
-                LittleFS.begin();  // nichts geschrieben, altes Dateisystem wieder einhaengen
-            }
-            otaError = true;
-            otaStatus = abbildFehlertext(erkannt, erwartet);
-            otaInProgress = false;
-            Logger::error((String("OTA abgelehnt: ") + otaStatus).c_str(), "API::OTA");
-
-            // Die Kachelanzeige holt die Fremdzeichnung von selbst ab (A2).
-            DisplayManager::meldung("Update abgelehnt", "", -1.0F);
-            return;
-        }
-    }
-
-    if (!otaError) {
-        if (otaCancelRequested) {
-            Update.end();
-            if (mode == U_FS) {
-                LittleFS.begin();  // so weit noch moeglich; sonst hilft der Neustart (Notfallroute)
-            }
-            otaError = true;
-            otaStatus = "Update abgebrochen";
-            otaInProgress = false;
-            Logger::warn("OTA canceled by user", "API::OTA");
-
-            DisplayManager::meldung("Update abgebrochen", "", -1.0F);
-            return;
-        }
-
-        if (Update.write(upload.buf, upload.currentSize) != upload.currentSize) {
-            otaError = true;
-            otaStatus = Update.getErrorString();
-            Logger::error((String("Write failed: ") + otaStatus).c_str(), "API::OTA");
-        }
-
-        otaSize += upload.currentSize;
-
-        float progress = 0.0F;
-        if (otaTotal > 0) {
-            progress = static_cast<float>(otaSize) / static_cast<float>(otaTotal);
-        }
-
-        DisplayManager::meldung(nullptr, nullptr, progress);
-    }
-}
-
-/**
- * @brief Handle OTA end
- *
- * @param upload Reference to the HTTPUpload object
- * @param mode Update mode U_FLASH or U_FS
- *
- * @return void
- */
-static void otaHandleEnd(HTTPUpload& /*upload*/, int mode) {
-    if (!otaError) {
-        if (Update.end(true)) {
-            otaStatus = String("Update OK (") + String(otaSize) + " Byte)";
-            if (mode == U_FS) {
-                Logger::info("OTA FS update complete, mounting file system...", "API::OTA");
-                if (LittleFS.begin()) {
-                    // Das neue Abbild bringt keine Konfiguration mit. Was im RAM steht, ist
-                    // der gueltige Stand -- zurueckschreiben, bevor neu gestartet wird. Damit
-                    // kostet ein Oberflaechen-Update keine eingerichteten Werte mehr.
-                    const bool slotsOk = SlotApi::konfigurationSichern();
-                    const bool cfgOk = configManager.save();
-                    const bool uebernommen = slotsOk && cfgOk;
-                    otaStatus += uebernommen ? ", Einrichtung uebernommen" : ", Einrichtung NICHT uebernommen";
-                    Logger::info(uebernommen ? "Konfiguration ins neue Dateisystem uebernommen"
-                                             : "Konfiguration NICHT uebernommen",
-                                 "API::OTA");
-                } else {
-                    otaStatus += ", neues Dateisystem nicht mountbar";
-                    Logger::error("Neues Dateisystem laesst sich nicht mounten", "API::OTA");
-                }
-            }
-            Logger::info(otaStatus.c_str(), "API::OTA");
-
-            DisplayManager::meldung("Update fertig", "Neustart ...", 1.0F);
-        } else {
-            otaError = true;
-            otaStatus = Update.getErrorString();
-        }
-    }
-}
-
-/**
- * @brief Handle OTA aborted
- *
- * @param upload Reference to the HTTPUpload object
- *
- * @return void
- */
-static void otaHandleAborted(HTTPUpload& /*upload*/, int mode) {
-    Update.end();
-    if (mode == U_FS) {
-        LittleFS.begin();  // so weit noch moeglich; sonst hilft der Neustart (Notfallroute)
-    }
-    otaError = true;
-    otaStatus = "Update abgebrochen";
-    otaInProgress = false;
-    otaCancelRequested = false;
-
-    DisplayManager::meldung("Update abgebrochen", "", -1.0F);
 }
 
 /**

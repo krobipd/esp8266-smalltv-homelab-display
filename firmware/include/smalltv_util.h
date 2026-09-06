@@ -32,6 +32,28 @@ static const uint16_t ROTATE_SEC_MAX = 3600;
 static const uint8_t DECIMALS_MAX = 3;
 static const uint16_t HELL_SEC_MIN = 5;
 static const uint16_t HELL_SEC_MAX = 3600;
+static const size_t ZEITZONE_LEN = 48;
+
+// Sieht die Zeichenkette wie eine POSIX-TZ-Regel aus ("CET-1CEST,M3.5.0,M10.5.0/3")?
+// Sie geht unveraendert an setTZ() der C-Bibliothek, die alles Ungueltige stillschweigend
+// als UTC behandelt -- dann liefe die Uhr falsch, ohne dass es jemand merkt. Deshalb hier
+// eine Vorpruefung: Laenge, druckbare Zeichen ohne Leerraum, und mindestens drei
+// Buchstaben am Anfang (das Kuerzel der Normalzeit).
+inline bool zeitzoneRegelGueltig(const char* tz) {
+    if (tz == nullptr) return false;
+    const size_t n = strlen(tz);
+    if (n < 3 || n > ZEITZONE_LEN - 1) return false;
+    for (size_t i = 0; i < n; i++) {
+        const unsigned char c = (unsigned char)tz[i];
+        if (c <= 0x20 || c >= 0x7F) return false;
+    }
+    for (size_t i = 0; i < 3; i++) {
+        const char c = tz[i];
+        const bool buchstabe = (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z');
+        if (!buchstabe) return false;
+    }
+    return true;
+}
 static const uint8_t MAX_PAGES = 4;
 static const uint8_t STALE_FAILS = 3;
 

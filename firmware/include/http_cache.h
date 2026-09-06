@@ -17,12 +17,16 @@ static const char CACHE_RUECKFRAGEN[] = "no-cache";
 // Platz fuer "\"vX.Y.Z-123456\"" mit Reserve.
 static const size_t ETAG_BUF_SIZE = 48;
 
-// Kennung einer Datei: Firmware-Version + Dateigroesse. Beides ist ohne Lesen der Datei
-// zu haben -- ein Inhalts-Hash muesste bei jeder Anfrage die ganze Datei durchlesen
-// (allein Alpine sind 45 KB). Die Version wechselt mit jedem Update, damit gilt danach
-// jede im Browser liegende Datei als veraltet.
-// Bewusste Grenze: gleiche Version UND gleiche Dateigroesse gelten als dieselbe Datei --
-// wer beim Entwickeln eine neue Oberflaeche flasht, zieht die VERSION mit.
+// Kennung einer Datei: Kennung des Dateisystems + Dateigroesse. Beides ist ohne Lesen
+// der Datei zu haben -- ein Inhalts-Hash je Anfrage muesste die ganze Datei durchlesen
+// (allein Alpine sind 45 KB).
+//
+// Die Kennung des Dateisystems entsteht beim Bauen aus dem INHALT aller Dateien
+// (scripts/fs_build_id.py, abgelegt in /web/BUILD). Damit gilt: geaenderte Oberflaeche
+// heisst neue Kennung, unveraenderte Oberflaeche heisst gleiche Kennung -- eine neue
+// Firmware allein verwirft den Browser-Speicher nicht mehr. Fehlt die Datei (aeltere
+// Abbilder), faellt die Firmware auf ihre Versionsnummer zurueck; dann gilt wieder die
+// alte Grenze, dass eine gleich grosse Datei ohne Versionssprung als dieselbe zaehlt.
 inline void baueEtag(char* out, size_t outSize, const char* version, size_t dateiGroesse) {
     snprintf(out, outSize, "\"%s-%u\"", version, (unsigned)dateiGroesse);
 }

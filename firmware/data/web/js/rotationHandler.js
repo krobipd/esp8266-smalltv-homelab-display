@@ -32,7 +32,7 @@ function rotationHandler() {
       })
         .then((r) => r.json())
         .then((data) => {
-          if (data.status === "ok") {
+          if (data.ok !== false && data.status !== "error") {
             this.rotation = Number.isInteger(data.rotation)
               ? data.rotation
               : payload.rotation;

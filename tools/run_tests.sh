@@ -64,6 +64,11 @@ if ! python3 -c "import json,sys; a=json.loads(sys.argv[1]); b=json.loads(sys.ar
 fi
 echo "Grenzwerte: Firmware und Mock stimmen ueberein"
 
+# Die Kennung des Dateisystems ersetzt seit v0.5.0 die Firmware-Version in der
+# Cache-Kennung. Sie muss sich bei jeder Inhaltsaenderung aendern -- auch bei gleicher
+# Dateigroesse -- und sonst gleich bleiben (N20).
+python3 "$BASIS/tests/tools/test_fs_kennung.py"
+
 # Fliesskomma-printf zieht rund 4 KB Programmspeicher nach sich; ein post-Skript
 # haelt es draussen (scripts/strip_float_printf.py). Kommt es zurueck, faellt es hier
 # auf statt erst bei der naechsten Speicherknappheit (N24).
@@ -127,6 +132,11 @@ for _ in $(seq 1 30); do
     sleep 0.2
 done
 node "$BASIS/tests/web/test_sicherung.mjs"
+
+# EIN Antwortformat (D5): jeder Endpunkt liefert ok und message, und die Oberflaeche
+# versteht zusaetzlich die beiden alten Formate -- das traegt das Fenster zwischen
+# Firmware- und Dateisystem-Update.
+node "$BASIS/tests/web/test_antwortformat.mjs"
 
 # Cache-Regeln der Oberflaeche -- ebenfalls gegen den Mock, weil nur dort echte
 # HTTP-Kopfzeilen entstehen.

@@ -23,44 +23,61 @@ inline void sendeJson(Webserver* webserver, int code, const JsonDocument& doc) {
     webserver->raw().send(code, "application/json", ausgabe);
 }
 
-/// Basis-Format {status, message}.
+/// Legt die gemeinsamen Antwortfelder an.
+///
+/// EIN Format seit v0.5.0: `ok` sagt, ob es geklappt hat, `message` sagt es in Worten.
+/// Vorher gab es drei -- {status,message} aus der Basis-Firmware, {ok,error} aus diesem
+/// Projekt und beim Abschluss eines Updates einen englischen Satz im Feld status. Die
+/// Oberflaeche musste je Handler wissen, welches davon kam, und pruefte entsprechend
+/// `data.message || data.error`.
+///
+/// Die alten Felder gehen VORERST WEITER MIT (`status` und, im Fehlerfall, `error`).
+/// Grund: Zwischen dem Flashen der Firmware und dem des Dateisystems laeuft die alte
+/// Oberflaeche auf der neuen Firmware. Ohne die Altfelder waere sie in diesem Fenster
+/// blind. Sie verschwinden, wenn dieses Fenster Geschichte ist.
+inline void setzeErgebnis(JsonDocument& doc, bool ok, const char* message) {
+    doc["ok"] = ok;
+    doc["message"] = message;
+    doc["status"] = ok ? "ok" : "error";
+    if (!ok) {
+        doc["error"] = message;
+    }
+}
+
+inline void sendeErgebnis(Webserver* webserver, int code, bool ok, const char* message) {
+    JsonDocument doc;
+    setzeErgebnis(doc, ok, message);
+    sendeJson(webserver, code, doc);
+}
+
+/// Erfolg mit Text.
 inline void sendeStatus(Webserver* webserver, int code, const char* status, const char* message) {
     JsonDocument doc;
+    setzeErgebnis(doc, strcmp(status, "error") != 0, message);
+    // Ein Zwischenstand wie "rebooting" oder "cancelling" ist weder ok noch Fehler --
+    // er steht weiterhin in status, damit die Seiten ihn unterscheiden koennen.
     doc["status"] = status;
-    doc["message"] = message;
     sendeJson(webserver, code, doc);
 }
 
 inline void sendeFehlerStatus(Webserver* webserver, int code, const char* message) {
-    sendeStatus(webserver, code, "error", message);
+    sendeErgebnis(webserver, code, false, message);
 }
 
-/// Werte-Format {ok:false, error}.
+/// Fehler im Werte-Format -- seit v0.5.0 dasselbe wie sendeFehlerStatus.
 inline void sendeFehler(Webserver* webserver, int code, const char* text) {
-    JsonDocument doc;
-    doc["ok"] = false;
-    doc["error"] = text;
-    sendeJson(webserver, code, doc);
+    sendeErgebnis(webserver, code, false, text);
 }
 
 /// Liest den JSON-Koerper der Anfrage. Bei einem Fehler ist bereits mit 400
 /// geantwortet -- der Aufrufer kehrt dann sofort zurueck, ohne selbst zu senden.
-/// basisFormat waehlt zwischen {status,message} und {ok,error}.
-inline bool leseJsonKoerper(Webserver* webserver, JsonDocument& doc, bool basisFormat) {
+inline bool leseJsonKoerper(Webserver* webserver, JsonDocument& doc) {
     if (!webserver->raw().hasArg("plain") || webserver->raw().arg("plain").length() == 0) {
-        if (basisFormat) {
-            sendeFehlerStatus(webserver, HTTP_CODE_BAD_REQUEST, "Anfrage ohne Inhalt");
-        } else {
-            sendeFehler(webserver, HTTP_CODE_BAD_REQUEST, "leere Anfrage");
-        }
+        sendeFehlerStatus(webserver, HTTP_CODE_BAD_REQUEST, "Anfrage ohne Inhalt");
         return false;
     }
     if (deserializeJson(doc, webserver->raw().arg("plain"))) {
-        if (basisFormat) {
-            sendeFehlerStatus(webserver, HTTP_CODE_BAD_REQUEST, "Anfrage ist kein gueltiges JSON");
-        } else {
-            sendeFehler(webserver, HTTP_CODE_BAD_REQUEST, "Anfrage ist kein gueltiges JSON");
-        }
+        sendeFehlerStatus(webserver, HTTP_CODE_BAD_REQUEST, "Anfrage ist kein gueltiges JSON");
         return false;
     }
     return true;

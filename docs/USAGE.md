@@ -36,6 +36,13 @@ die gefundenen Felder.
 Feldnamen eintragen (bei der ioBroker-rest-api: `val`). Verschachtelte Felder werden nicht
 unterstützt.
 
+### Uhrzeit und Zeitzone
+
+Auf der Seite **Uhrzeit** stehen Zeitserver und Zeitzone. Die Zeitzone ist eine
+POSIX-Regel; die gängigen stehen in einer Auswahlliste, eigene lassen sich eintragen
+(`CET-1CEST,M3.5.0,M10.5.0/3` ist Mitteleuropa mit Sommerzeit). Der Nachtmodus rechnet
+mit dieser Regel — steht sie falsch, dimmt das Display zur falschen Stunde.
+
 **3. Beschriftung und Einheit.** Beschriftung darf leer bleiben — ein einzelner,
 offensichtlicher Wert braucht keine Überschrift. Die Einheit fasst 15 Zeichen und wird gern
 als kleiner Zusatz benutzt (`% (Woche)`). Beide dürfen Umlaute, ß und das Gradzeichen

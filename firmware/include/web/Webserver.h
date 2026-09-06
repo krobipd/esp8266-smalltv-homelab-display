@@ -64,8 +64,10 @@ class Webserver {
 
     static String guessContentTypeC(const char* path);
 
-    /// Kennung einer Datei fuer den Browser-Cache (Firmware-Version + Dateigroesse).
+    /// Kennung einer Datei fuer den Browser-Cache (Kennung des Dateisystems + Groesse).
     static void baueEtag(char* out, size_t outSize, size_t dateiGroesse);
+    /// Liest /web/BUILD einmal beim Start. Ohne die Datei gilt die Firmware-Version.
+    static void ladeDateisystemKennung();
     /// Kennt der Browser die Datei schon? Dann 304 und Schluss -- sonst false.
     bool beantworteAusBrowserCache(const char* etag);
     /// Cache-Kopfzeilen fuer eine ausgelieferte Datei setzen.

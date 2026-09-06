@@ -102,65 +102,88 @@ function sicherungHandler() {
 
       this.laeuft = true;
       try {
-        this.fortschritt = "Alte Werte werden entfernt …";
-        const rAlt = await apiFetch("/api/v1/slots");
-        if (!rAlt.ok) {
-          this.fehler = "Das Gerät hat den Bestand nicht herausgegeben — es wurde nichts geändert.";
-          return;
-        }
-        const dAlt = await rAlt.json();
-        for (let i = 0; i < dAlt.slots.length; i++) {
-          if (dAlt.slots[i].url) {
-            await apiFetch(`/api/v1/slots/${i}`, { method: "DELETE" });
-          }
-        }
-
-        this.fortschritt = "Einstellungen werden übernommen …";
-        const rSet = await apiFetch("/api/v1/slots/settings", {
+        // EIN Aufruf für die ganze Sicherung: Das Gerät prüft sie, übernimmt sie und
+        // schreibt einmal in den Flash. Vorher liefen bis zu fünfundzwanzig Aufrufe
+        // (löschen, Einstellungen, jeden Wert einzeln), von denen jeder schrieb — und
+        // zwischen zweien war der Bestand halb entfernt und halb angelegt.
+        this.fortschritt = "Sicherung wird übernommen …";
+        const r = await apiFetch("/api/v1/slots/restore", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(daten),
         });
-        const dSet = await rSet.json().catch(() => ({}));
-        if (!rSet.ok || dSet.ok === false) {
-          this.fehler =
-            "Die Einstellungen wurden abgelehnt: " +
-            (dSet.error || rSet.status) +
-            " — die alten Werte sind bereits entfernt, die gesicherten wurden nicht angelegt.";
+        if (r.status === 404) {
+          // Ältere Firmware kennt den Weg noch nicht (z. B. im Fenster zwischen
+          // Firmware- und Dateisystem-Update). Dann der alte Weg, Wert für Wert.
+          await this.einspielenEinzeln(daten);
           return;
         }
-
-        let angelegt = 0;
-        const abgelehnt = [];
-        for (let i = 0; i < daten.slots.length; i++) {
-          const s = daten.slots[i];
-          if (!s.url) continue;
-          this.fortschritt = `Wert ${angelegt + 1} wird angelegt …`;
-          const r = await apiFetch("/api/v1/slots", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ ...s, index: i }),
-          });
-          const d = await r.json().catch(() => ({}));
-          if (r.ok && d.ok !== false) {
-            angelegt++;
-          } else {
-            // Nicht abbrechen: ein einzelner unbrauchbarer Wert darf nicht die
-            // ganze Wiederherstellung verhindern. Aber melden -- still verschlucken
-            // waere die schlechtere Haelfte.
-            abgelehnt.push(`${s.label || "Wert " + (i + 1)}: ${d.error || r.status}`);
-          }
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok || d.ok === false) {
+          this.fehler = "Die Sicherung wurde abgelehnt: " + (ergebnisVon(r, d).text || r.status) +
+                        " — es wurde nichts geändert.";
+          return;
         }
-
-        this.meldung = `${angelegt} Werte wiederhergestellt.`;
-        if (abgelehnt.length) {
-          this.fehler = "Nicht übernommen — " + abgelehnt.join(" · ");
-        }
+        this.meldung = `${d.werte ?? 0} Werte wiederhergestellt.`;
       } catch (e) {
         this.fehler = "Einspielen fehlgeschlagen.";
       } finally {
         this.laeuft = false;
         this.fortschritt = "";
+      }
+    },
+
+    // Rückfall für Firmware vor v0.5.0: Wert für Wert, wie bisher.
+    async einspielenEinzeln(daten) {
+      this.fortschritt = "Alte Werte werden entfernt …";
+      const rAlt = await apiFetch("/api/v1/slots");
+      if (!rAlt.ok) {
+        this.fehler = "Das Gerät hat den Bestand nicht herausgegeben — es wurde nichts geändert.";
+        return;
+      }
+      const dAlt = await rAlt.json();
+      for (let i = 0; i < dAlt.slots.length; i++) {
+        if (dAlt.slots[i].url) {
+          await apiFetch(`/api/v1/slots/${i}`, { method: "DELETE" });
+        }
+      }
+
+      this.fortschritt = "Einstellungen werden übernommen …";
+      const rSet = await apiFetch("/api/v1/slots/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(daten),
+      });
+      const dSet = await rSet.json().catch(() => ({}));
+      if (!rSet.ok || dSet.ok === false) {
+        this.fehler =
+          "Die Einstellungen wurden abgelehnt: " + (ergebnisVon(rSet, dSet).text || rSet.status) +
+          " — die alten Werte sind bereits entfernt, die gesicherten wurden nicht angelegt.";
+        return;
+      }
+
+      let angelegt = 0;
+      const abgelehnt = [];
+      for (let i = 0; i < daten.slots.length; i++) {
+        const s = daten.slots[i];
+        if (!s.url) continue;
+        this.fortschritt = `Wert ${angelegt + 1} wird angelegt …`;
+        const r = await apiFetch("/api/v1/slots", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...s, index: i }),
+        });
+        const d = await r.json().catch(() => ({}));
+        if (r.ok && d.ok !== false) {
+          angelegt++;
+        } else {
+          abgelehnt.push(`${s.label || "Wert " + (i + 1)}: ${ergebnisVon(r, d).text || r.status}`);
+        }
+      }
+
+      this.meldung = `${angelegt} Werte wiederhergestellt.`;
+      if (abgelehnt.length) {
+        this.fehler = "Nicht übernommen — " + abgelehnt.join(" · ");
       }
     },
   };

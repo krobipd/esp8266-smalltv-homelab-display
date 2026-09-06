@@ -88,6 +88,11 @@ auto ConfigManager::load() -> bool {
     if (ntp_server_cfg.length() != 0) {
         this->ntp_server = ntp_server_cfg.c_str();
     }
+    // Dasselbe fuer die Zeitzone: dauerhaft in der Datei, auf jedem Boot zu uebernehmen.
+    String zeitzone_cfg = doc["zeitzone"] | "";
+    if (zeitzone_cfg.length() != 0) {
+        this->zeitzone = zeitzone_cfg.c_str();
+    }
 
     // Die Vergleichswerte aus dem SecureStorage stehen seit dem Vorbelegen oben schon
     // in den Membern -- nicht erneut lesen. Migration: Werte aus der Datei wandern in
@@ -226,6 +231,9 @@ auto ConfigManager::save() -> bool {
     doc["lcd_rotation"] = lcd_rotation;
     if (!this->ntp_server.empty()) {
         doc["ntp_server"] = this->ntp_server.c_str();
+    }
+    if (!this->zeitzone.empty()) {
+        doc["zeitzone"] = this->zeitzone.c_str();
     }
 
     // Atomar ueber den gemeinsamen Helfer (json_datei.h) -- gleiche Autoritaet

@@ -7,19 +7,47 @@ gepflegt hat.
 
 Basis: `http://<geräte-ip>/`. Nur HTTP. Antworten sind JSON.
 
-## Zwei Fehlerformate — und warum
+## Ein Antwortformat
 
-| Herkunft | Format |
+Jede Antwort trägt dieselben zwei Felder:
+
+| Feld | Bedeutung |
 |---|---|
-| Endpunkte dieses Projekts (`/slots…`) | `{"ok": false, "error": "..."}` plus HTTP-Status |
-| Endpunkte der Basis-Firmware (WLAN, NTP, Passwort, OTA, Logs) | `{"status": "error", "message": "..."}` |
+| `ok` | `true` oder `false` — hat es geklappt? |
+| `message` | derselbe Sachverhalt in Worten, deutsch |
 
-Das bleibt so: Die Basis umzubauen würde den Abstand zum Ursprungsprojekt unnötig
-vergrößern. **Regel für neuen Code:** eigene Endpunkte nur `{ok, error}`. Wer Antworten der
-Basis auswertet, prüft `res.ok` bzw. den HTTP-Status, statt Felder zu raten.
+Dazu kommen die fachlichen Felder des jeweiligen Endpunkts (`slots`, `rotation`,
+`ntp_server` …). Der HTTP-Status sagt dasselbe wie `ok`, mit **einer** Ausnahme: Der
+Abschluss eines Updates antwortet auch bei einem abgelehnten Abbild mit 200, die Ablehnung
+steht in `ok`.
+
+Bis v0.4.3 gab es drei Formate nebeneinander: `{status, message}` aus der Basis-Firmware,
+`{ok, error}` aus diesem Projekt und beim Update einen englischen Satz im Feld `status`.
+Die Oberfläche musste je Endpunkt wissen, welches kommt.
+
+**Übergangsweise** schicken die Antworten zusätzlich die alten Felder mit: `status`
+(`"ok"`/`"error"`, bei Zwischenständen auch `"rebooting"`, `"cancelling"`, `"gestartet"`,
+`"connected"`) und im Fehlerfall `error`. Grund: Zwischen dem Flashen der Firmware und dem
+des Dateisystems läuft die alte Oberfläche auf der neuen Firmware. Diese Felder
+verschwinden, sobald dieses Fenster Geschichte ist. **Neuer Code liest `ok` und `message`.**
+
+`POST /api/v1/slots/restore` nimmt eine komplette Sicherung entgegen (dasselbe Dokument,
+das `GET /api/v1/slots` liefert), prüft sie, übernimmt sie und schreibt **einmal**. Vorher
+lief eine Wiederherstellung über bis zu 25 Einzelaufrufe, von denen jeder schrieb — und
+zwischen zweien war der Bestand halb entfernt und halb angelegt.
+
+`GET /api/v1/ntp/config` und `POST` darauf tragen neben `ntp_server` eine `zeitzone` als
+POSIX-Regel (`CET-1CEST,M3.5.0,M10.5.0/3`). Sie ist freiwillig: Wer das Feld wegläßt,
+behält seine Einstellung, eine leere Angabe setzt auf Mitteleuropa zurück. Die Regel wirkt
+sofort, ohne Neustart, und der Nachtmodus rechnet damit.
 
 `GET /api/v1/slots/status` liefert neben `slots[]` ein Objekt `geraet` mit dem Zustand des
-Geräts: `freeHeap` (Bytes), `heapFrag` (Prozent), `uptimeSec`, `rssi` (dBm).
+Geräts: `version`, `freeHeap` (Bytes), `heapFrag` (Prozent), `uptimeSec`, `rssi` (dBm).
+`version` ist die verlässliche Auskunft über den Firmware-Stand. Bis v0.4.3 ließ er sich
+nur aus der Cache-Kennung der Oberfläche ablesen — die hängt seit v0.5.0 am **Inhalt** des
+Dateisystems (`"<kennung>-<dateigröße>"`), damit eine unveränderte Oberfläche nach einem
+Firmware-Update im Browser gültig bleibt und eine geänderte, gleich große Datei nicht mehr
+als unverändert durchgeht.
 
 `POST /api/v1/ntp/sync` **stößt den Abgleich nur an** und antwortet sofort mit
 `{"status": "gestartet"}`; das Ergebnis steht kurz darauf in `GET /api/v1/ntp/status`

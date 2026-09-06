@@ -64,8 +64,9 @@ antwortet, ist eine Quelle:
   Formular ein.
 - **Alles andere**, sofern ein Endpunkt existiert, der einen einzelnen Wert ausgibt.
 
-Die **Zeitzone ist fest auf Mitteleuropa** eingestellt (MEZ/MESZ, Sommerzeit automatisch);
-der Nachtmodus rechnet damit. Ein Zeitserver lässt sich frei wählen, die Zone nicht.
+**Zeitserver und Zeitzone** sind einstellbar (Seite „Uhrzeit"). Die Zone ist eine
+POSIX-Regel — die gängigen stehen zur Auswahl, Mitteleuropa mit Sommerzeit ist die Vorgabe.
+Der Nachtmodus rechnet damit.
 
 > **Kein HTTPS.** Auf diesem Chip bleibt für TLS kein Speicher übrig — bewusste, nicht
 > verhandelbare Entscheidung. Das Gerät gehört ins eigene Netz, nicht ins Internet.

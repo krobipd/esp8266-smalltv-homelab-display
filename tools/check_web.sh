@@ -23,6 +23,12 @@ python3 -c "import ast, sys; ast.parse(open(sys.argv[1]).read())" ../../../tools
 # Syntax vorher stimmen.
 python3 -c "import ast, sys; ast.parse(open(sys.argv[1]).read())" ../../../tools/abnahme.py \
     || { echo "SYNTAXFEHLER: tools/abnahme.py"; rc=1; }
+# Die Build-Skripte laufen nur unter PlatformIO -- die Syntax muss trotzdem stimmen,
+# sonst bricht der Build erst beim naechsten Flash-Versuch ab.
+for s in ../../scripts/*.py; do
+    python3 -c "import ast, sys; ast.parse(open(sys.argv[1]).read())" "$s" \
+        || { echo "SYNTAXFEHLER: $s"; rc=1; }
+done
 
-[ "$rc" -eq 0 ] && echo "Oberflaeche: Syntax OK ($(ls js/*.js | wc -l | tr -d ' ') JS-Dateien + Mock + Abnahmeskript)"
+[ "$rc" -eq 0 ] && echo "Oberflaeche: Syntax OK ($(ls js/*.js | wc -l | tr -d ' ') JS-Dateien + Mock + Abnahmeskript + Build-Skripte)"
 exit "$rc"

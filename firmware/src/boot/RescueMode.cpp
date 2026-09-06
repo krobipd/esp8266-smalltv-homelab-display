@@ -25,6 +25,7 @@
 
 #include "boot/RescueMode.h"
 #include "abbild_art.h"
+#include "web/OtaAblauf.h"
 #include "project_version.h"
 #include "config/ConfigManager.h"
 #include "hardware/Pins.h"
@@ -57,8 +58,6 @@ static constexpr size_t LOG_BUF_SIZE = 96;
 static constexpr int RESCUE_AP_DELAY_MS = 100;
 static constexpr int REBOOT_DELAY_MS = 500;
 static constexpr uint32_t FLASH_KB_DIV = 1024;
-static constexpr uint32_t OTA_OFFSET = 0x1000;
-static constexpr uint32_t OTA_MASK = 0xFFFFF000;
 
 static Webserver* rescueWebserver = nullptr;
 
@@ -184,6 +183,10 @@ auto RescueMode::run() -> void {
     drawDebugScreen();
 
     rescueWebserver = new Webserver(RESCUE_PORT);
+    // Ohne dies bliebe die Kopfzeile mit der Pruefsumme unsichtbar: Der Webserver sammelt
+    // nur ein, was ihm genannt wird. Im Rettungsmodus ist sie freiwillig -- aber wer sie
+    // mitschickt, soll sie auch geprueft bekommen.
+    rescueWebserver->raw().collectHeaders("X-Abbild-MD5");
     rescueWebserver->begin();
 
     registerRescueApi();
@@ -413,38 +416,37 @@ static void handleRescueReboot() {
  * @brief Handle POST /api/v1/rescue/ota – firmware upload
  *        Expects multipart/form-data with file field "firmware"
  */
+// Derselbe Ablauf wie im Normalbetrieb (OtaAblauf, N22). Vorher stand er hier ein
+// zweites Mal, mit weniger Sicherungen: keine Pruefsumme, kein sauberer Abbruch, Fehler
+// nur im Protokoll. Der Rettungsweg schreibt weiterhin ausschliesslich Firmware.
+//
+// Die Pruefsumme ist hier FREIWILLIG, nicht Pflicht: Wer im Rettungsmodus landet, hat
+// ein Geraet, das nicht mehr startet -- und moeglicherweise nur eine alte Seite oder
+// curl zur Hand. Eine Pflichtangabe koennte den letzten Weg zurueck versperren.
 static void handleRescueOtaUpload() {
     HTTPUpload& upload = rescueWebserver->raw().upload();
 
-    if (upload.status == UPLOAD_FILE_START) {
-        uint32_t maxSize =
-            (ESP.getFreeSketchSpace() - OTA_OFFSET) & OTA_MASK;  // NOLINT(readability-static-accessed-through-instance)
-        Logger::info("Rescue OTA upload started", "RescueMode");
-        if (!Update.begin(maxSize, U_FLASH)) {
-            Logger::error(Update.getErrorString().c_str(), "RescueMode");
+    switch (upload.status) {
+        case UPLOAD_FILE_START: {
+            Logger::info("Rescue OTA upload started", "RescueMode");
+            const String& md5 = rescueWebserver->raw().header("X-Abbild-MD5");
+            OtaAblauf::start(U_FLASH, (size_t)upload.contentLength,
+                             md5.length() == 32 ? md5.c_str() : "");
+            break;
         }
-    } else if (upload.status == UPLOAD_FILE_WRITE) {
-        if (Update.hasError()) {
-            return;
-        }
-        // Erster Brocken: dieselbe Abbild-Pruefung wie im Normalbetrieb (abbild_art.h).
-        // Der Rettungsweg schreibt nur Firmware; ein Dateisystem-Abbild wird abgewiesen.
-        if (Update.progress() == 0) {
-            const AbbildArt erkannt = erkenneAbbild(upload.buf, upload.currentSize);
-            if (erkannt != ABBILD_FIRMWARE) {
-                Update.end();
-                Logger::error(abbildFehlertext(erkannt, ABBILD_FIRMWARE), "RescueMode");
-                return;
+        case UPLOAD_FILE_WRITE:
+            OtaAblauf::schreiben(upload.buf, upload.currentSize);
+            break;
+        case UPLOAD_FILE_END:
+            if (OtaAblauf::abschliessen()) {
+                Logger::info("Rescue OTA upload finished", "RescueMode");
             }
-        }
-        if (Update.write(upload.buf, upload.currentSize) != upload.currentSize) {
-            Logger::error(Update.getErrorString().c_str(), "RescueMode");
-        }
-    } else if (upload.status == UPLOAD_FILE_END) {
-        if (!Update.end(true)) {
-            Logger::error(Update.getErrorString().c_str(), "RescueMode");
-        }
-        Logger::info("Rescue OTA upload finished", "RescueMode");
+            break;
+        case UPLOAD_FILE_ABORTED:
+            OtaAblauf::abbrechen("Update abgebrochen");
+            break;
+        default:
+            break;
     }
 }
 
@@ -452,22 +454,19 @@ static void handleRescueOtaUpload() {
  * @brief Handle POST /api/v1/rescue/ota – send JSON response and reboot if successful
  */
 static void handleRescueOtaFinished() {
+    const bool fehler = OtaAblauf::fehler();
+
     JsonDocument doc;
-
-    doc["status"] = "ok";
-    doc["message"] = "OTA update successful, rebooting...";
-
-    if (Update.hasError()) {
-        doc["status"] = "error";
-        doc["message"] = "OTA update failed";
-    }
+    doc["status"] = fehler ? "error" : "ok";
+    doc["message"] = fehler ? OtaAblauf::meldung() : String("Update OK, Neustart ...");
+    OtaAblauf::abmelden();
 
     String json;
     serializeJson(doc, json);
 
     rescueWebserver->raw().send(HTTP_CODE_OK, "application/json", json);
 
-    if (!Update.hasError()) {
+    if (!fehler) {
         // Zaehler zuruecksetzen -- sonst zaehlt der naechste Boot weiter (RTC und
         // persistenter Zaehler stehen >= Schwelle) und landet garantiert wieder hier.
         RescueMode::markBootStable();

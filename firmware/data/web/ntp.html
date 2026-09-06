@@ -53,6 +53,27 @@
             x-model="ntpServer"
             placeholder="pool.ntp.org"
           />
+          <label for="zeitzone">Zeitzone</label>
+          <select
+            id="zeitzone-auswahl"
+            @change="zeitzone = $event.target.value"
+            style="margin-bottom: 0.4em"
+          >
+            <option value="">— aus der Liste wählen —</option>
+            <template x-for="z in zeitzonen" :key="z.regel">
+              <option :value="z.regel" :selected="z.regel === zeitzone" x-text="z.text"></option>
+            </template>
+          </select>
+          <input
+            id="zeitzone"
+            type="text"
+            x-model="zeitzone"
+            placeholder="CET-1CEST,M3.5.0,M10.5.0/3"
+          />
+          <p class="small muted">
+            Die Regel bestimmt Ortszeit und Sommerzeit-Umstellung — der Nachtmodus rechnet
+            damit. Leer lassen heißt Mitteleuropa.
+          </p>
           <div style="margin-top: 0.5em">
             <button type="button" class="btn" @click="saveConfig()">
               Speichern

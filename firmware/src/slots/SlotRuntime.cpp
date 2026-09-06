@@ -110,16 +110,24 @@ auto abrufen(const char* url, int& httpStatus, char* koerper, size_t koerperSize
         return false;
     }
 
-    WiFiClient client;
-    HTTPClient http;
+    // EINE Verbindung, die zwischen Abrufen offen bleiben darf. Abrufe laufen strikt
+    // seriell (ein Ziel nach dem anderen), deshalb genuegt genau ein Client -- die
+    // fruehere Sorge "eine offene Verbindung JE SLOT kostet Heap" traf auf diesen
+    // Ablauf nie zu. Fuer aufeinanderfolgende Abrufe desselben Ziels entfaellt damit
+    // der TCP-Aufbau (Verbindung, Handshake, Slow Start); bei wechselnden Zielen
+    // schliesst die Bibliothek die alte Verbindung selbst.
+    //
+    // Warum das frueher abgeschaltet war: Mit keep-alive und getString() lief jedes
+    // Warten auf "mehr Daten" ins volle Zeitlimit, weil der Server die Verbindung
+    // offen haelt (Befund N1, 2 s je Abruf). Das lag am Lesen ueber readBytes, nicht
+    // am keep-alive; seit v0.3.0 liest writeToStream nach dem Framing der Bibliothek
+    // und hoert auf, wenn Content-Length erreicht ist.
+    static WiFiClient client;
+    static HTTPClient http;
     // Der ESP8266-Client kennt nur EIN gemeinsames Zeitlimit, das je Phase gilt.
     http.setTimeout((uint16_t)ANTWORT_TIMEOUT_MS);
     http.setFollowRedirects(HTTPC_DISABLE_FOLLOW_REDIRECTS);
-    // Verbindung nach der Antwort schliessen lassen. Vorgabe der Bibliothek ist
-    // keep-alive; dann haelt der Server die Verbindung offen, und jedes Warten auf
-    // "mehr Daten" laeuft ins volle Zeitlimit. Wiederverwendung lohnt hier nicht:
-    // eine offene Verbindung je Slot kostet Heap, den dieser Chip nicht hat.
-    http.setReuse(false);
+    http.setReuse(true);
 
     if (!http.begin(client, url)) {
         setErr(fehler, fehlerSize, "Adresse nicht verwendbar");

@@ -54,13 +54,13 @@ function logsHandler() {
       this.loading = true;
       this.message = "";
       apiFetch("/api/v1/logs/clear", { method: "POST" })
-        .then((r) => r.json())
+        .then((r) => r.json().then((data) => ergebnisVon(r, data)))
         .then((data) => {
-          if (data.status === "ok") {
+          if (data.ok) {
             this.logs = [];
             this.message = "Protokoll geleert";
           } else {
-            this.message = data.message || "Leeren fehlgeschlagen";
+            this.message = data.text || "Leeren fehlgeschlagen";
           }
         })
         .catch((err) => {

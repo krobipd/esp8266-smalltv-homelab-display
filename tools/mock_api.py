@@ -47,6 +47,28 @@ def _fw_version():
 FW_VERSION = _fw_version()
 
 
+def _fs_kennung():
+    """Kennung des Dateisystems wie am Geraet: Inhalt von data/web/BUILD.
+
+    Seit v0.5.0 haengt die Cache-Kennung am INHALT der Oberflaeche, nicht mehr an der
+    Firmware-Version (scripts/fs_build_id.py erzeugt sie beim Bauen). Fehlt die Datei,
+    faellt auch das Geraet auf die Version zurueck -- der Mock macht dasselbe.
+    """
+    basis = os.path.dirname(os.path.abspath(__file__))
+    try:
+        with open(os.path.join(basis, "..", "firmware", "data", "web", "BUILD"),
+                  encoding="utf-8") as f:
+            kennung = f.read().strip()
+        if kennung and all(c in "0123456789abcdef" for c in kennung):
+            return kennung
+    except OSError:
+        pass
+    return FW_VERSION
+
+
+FS_KENNUNG = _fs_kennung()
+
+
 ABBILD_UNBEKANNT, ABBILD_FIRMWARE, ABBILD_DATEISYSTEM = 0, 1, 2
 
 
@@ -108,6 +130,8 @@ MAX_SLOTS = 12
 # Dieselben Grenzen wie die Firmware (smalltv_util.h / config_codec.h). run_tests.sh
 # vergleicht diese Tabelle mit tests/host/limits_dump.cpp -- laufen sie auseinander,
 # lehnte das Geraet ab, was der Mock durchwinkt, und der Test verbirgt genau das.
+# Standard-Schriftstufen wie in der Firmware (config_codec.h).
+STD_WERT_SIZE, STD_LABEL_SIZE, STD_UNIT_SIZE = 3, 2, 2
 LIMITS = {
     "url": 127, "label": 23, "field": 31, "unit": 15,
     "slots": 12, "pages": 4,
@@ -167,6 +191,9 @@ ABRUF_CACHE = {}    # index -> (url, Zeitpunkt, (code, body, err)) -- Takt = ref
 # Zustand der Basis-Seiten (NTP, Rotation, Protokoll, OTA) -- Antwortformate 1:1 aus
 # src/web/Api.cpp uebernommen. Fehlten anfangs komplett; die Seiten liefen gegen 404.
 NTP_SERVER = "pool.ntp.org"
+# Vorgabe wie in der Firmware (NTPClient.cpp, TZ_VORGABE): Mitteleuropa.
+ZEITZONE_VORGABE = "CET-1CEST,M3.5.0,M10.5.0/3"
+ZEITZONE = ZEITZONE_VORGABE
 NTP_LETZTER_SYNC = int(START)
 ROTATION = 0
 LOGS = [
@@ -174,6 +201,44 @@ LOGS = [
     "[wifi] Verbunden mit MOCK-WLAN (127.0.0.1)",
     "[ntp] Zeit synchronisiert",
 ]
+
+
+def ergebnis(ok, message, **weitere):
+    """EIN Antwortformat, wie setzeErgebnis() in der Firmware (D5).
+
+    ok sagt, ob es geklappt hat, message sagt es in Worten. status und -- im Fehlerfall --
+    error gehen vorerst weiter mit, damit eine aeltere Oberflaeche im Fenster zwischen
+    Firmware- und Dateisystem-Update nicht blind ist.
+    """
+    d = {"ok": bool(ok), "message": message, "status": "ok" if ok else "error"}
+    if not ok:
+        d["error"] = message
+    d.update(weitere)
+    return d
+
+
+def zeitzone_gueltig(tz):
+    """Wie NTPClient::zeitzoneGueltig in der Firmware."""
+    if not isinstance(tz, str) or not 1 <= len(tz) <= 47:
+        return False
+    if any(ord(c) <= 0x20 or ord(c) >= 0x7F for c in tz):
+        return False
+    return all(c.isascii() and c.isalpha() for c in tz[:3])
+
+
+def leere_konfiguration():
+    """Werkszustand der Konfiguration -- Grundlage fuer die Wiederherstellung."""
+    c = {
+        "rotateSec": 10, "colorWarn": 64800, "colorAlarm": 63488,
+        "layout": [2, 2, 2, 2], "teilung": [0, 0, 0, 0],
+        "helligkeit": 100, "hellModus": 0, "hellUrl": "", "hellField": "",
+        "hellSec": 30, "hellAn": 100, "hellAus": 15,
+        "nachtAn": False, "nachtVon": 22, "nachtBis": 7, "nachtHelligkeit": 15,
+        "slots": [],
+    }
+    for _ in range(MAX_SLOTS):
+        c["slots"].append(leerer_slot())
+    return c
 
 
 def leerer_slot():
@@ -296,7 +361,7 @@ class Handler(BaseHTTPRequestHandler):
             return {}
 
     def _fehler(self, code, text):
-        self._json(code, {"ok": False, "error": text})
+        self._json(code, ergebnis(False, text))
 
     def _tokenFehlt(self):
         """Bildet requireBearerToken() der Firmware nach -- inklusive Antwortformat.
@@ -306,7 +371,7 @@ class Handler(BaseHTTPRequestHandler):
         kopf = self.headers.get("Authorization") or ""
         if kopf == f"Bearer {AKTIVER_TOKEN}":
             return False
-        self._json(401, {"status": "error", "message": "Passwort fehlt oder ist falsch"})
+        self._json(401, ergebnis(False, "Passwort fehlt oder ist falsch"))
         return True
 
     # ---------- GET ----------
@@ -317,14 +382,14 @@ class Handler(BaseHTTPRequestHandler):
             return None
         if p == "/api/v1/token/check":
             # Wie handleTokenCheck(): die Passwortpruefung ist oben schon gelaufen.
-            return self._json(200, {"status": "ok", "message": "Passwort ist gueltig"})
+            return self._json(200, ergebnis(True, "Passwort ist gueltig"))
         if p == "/api/v1/slots":
             # Wie handleSlotsGet(): die Konfiguration samt Grenzen (B8).
             return self._json(200, dict(CONFIG, limits=LIMITS))
         if p == "/api/v1/slots/status":
             # Antwortform wie handleSlotsStatus(): Werte plus Geraetezustand (E11).
             return self._json(200, {"slots": self._status(), "geraet": {
-                "freeHeap": 18400, "heapFrag": 7,
+                "version": _fw_version(), "freeHeap": 18400, "heapFrag": 7,
                 "uptimeSec": int(time.time() - START_ZEIT), "rssi": -58}})
         if p == "/api/v1/wifi/status":
             # Formate 1:1 aus handleWifiStatus() -- nur diese drei Schluessel.
@@ -334,7 +399,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, {"lastOk": True, "lastStatus": "Synced",
                                     "lastSyncTime": NTP_LETZTER_SYNC})
         if p == "/api/v1/ntp/config":
-            return self._json(200, {"ntp_server": NTP_SERVER})
+            return self._json(200, {"ntp_server": NTP_SERVER, "zeitzone": ZEITZONE})
         if p == "/api/v1/display/rotation":
             return self._json(200, {"rotation": ROTATION})
         if p == "/api/v1/logs":
@@ -454,7 +519,7 @@ class Handler(BaseHTTPRequestHandler):
             roh = f.read()
         # 1:1 wie Webserver::baueEtag/sendeCacheKopfzeilen: behalten darf der Browser,
         # ungeprueft benutzen nicht. Kennt er die Kennung schon, kommt nur ein 304.
-        etag = f'"{FW_VERSION}-{len(roh)}"'
+        etag = f'"{FS_KENNUNG}-{len(roh)}"'
         if etag_passt(self.headers.get("If-None-Match"), etag):
             self.send_response(304)
             self.send_header("Cache-Control", "no-cache")
@@ -475,32 +540,35 @@ class Handler(BaseHTTPRequestHandler):
             return self._test()
         if p == "/api/v1/slots":
             return self._slot_speichern()
+        if p == "/api/v1/slots/restore":
+            return self._wiederherstellen()
         if p == "/api/v1/slots/settings":
             return self._einstellungen()
         if p == "/api/v1/wifi/connect":
             # Formate 1:1 aus handleWifiConnect() ({"status": "connected"/"error"}).
             ssid = (self._body().get("ssid") or "").strip()
             if not ssid:
-                return self._json(400, {"status": "error", "message": "WLAN-Name fehlt"})
-            return self._json(200, {"status": "connected", "ssid": ssid, "ip": "127.0.0.1"})
+                return self._json(400, ergebnis(False, "WLAN-Name fehlt"))
+            return self._json(200, ergebnis(True, "Verbunden", status="connected",
+                                            ssid=ssid, ip="127.0.0.1"))
         if p == "/api/v1/ntp/sync":
             global NTP_LETZTER_SYNC
             NTP_LETZTER_SYNC = int(time.time())
             # Wie handleNtpSync(): nur angestossen, das Ergebnis holt /ntp/status.
-            return self._json(200, {"status": "gestartet", "lastStatus": "Synced",
-                                    "lastSyncTime": NTP_LETZTER_SYNC})
+            return self._json(200, ergebnis(True, "Abgleich angestossen", status="gestartet",
+                                            lastStatus="Synced", lastSyncTime=NTP_LETZTER_SYNC))
         if p == "/api/v1/ntp/config":
             return self._ntp_config()
         if p == "/api/v1/display/rotation":
             return self._rotation_setzen()
         if p == "/api/v1/reboot":
             LOGS.append("[api] Neustart angefordert (Mock: kein echter Neustart)")
-            return self._json(200, {"status": "rebooting"})
+            return self._json(200, ergebnis(True, "Neustart", status="rebooting"))
         if p == "/api/v1/logs/clear":
             del LOGS[:]
-            return self._json(200, {"status": "ok", "message": "Logs cleared"})
+            return self._json(200, ergebnis(True, "Protokoll geleert"))
         if p == "/api/v1/ota/cancel":
-            return self._json(200, {"status": "cancelling", "message": "Cancel request received"})
+            return self._json(200, ergebnis(True, "Abbruch angefordert", status="cancelling"))
         if p in ("/api/v1/ota/fw", "/api/v1/ota/fs"):
             # Upload einlesen und verwerfen -- der Mock flasht nichts, sagt das aber ehrlich.
             # Abbild-Art und Pruefsumme werden trotzdem geprueft, 1:1 wie otaHandleStart()
@@ -514,44 +582,53 @@ class Handler(BaseHTTPRequestHandler):
             if len(md5) != 32 and erwartet == ABBILD_FIRMWARE:
                 text = "Pruefsumme fehlt -- Update-Seite neu laden oder curl mit X-Abbild-MD5"
                 LOGS.append("[ota] abgelehnt: " + text)
-                return self._json(200, {"status": "error", "message": text})
+                return self._json(200, ergebnis(False, text))
             erkannt = erkenne_abbild(daten[:16])
             if erkannt != erwartet:
                 text = abbild_fehlertext(erkannt, erwartet)
                 LOGS.append("[ota] abgelehnt: " + text)
                 # Antwortform wie handleOtaFinished(): HTTP 200 mit status "error".
-                return self._json(200, {"status": "error", "message": text})
+                return self._json(200, ergebnis(False, text))
             if len(md5) == 32:
                 ist = hashlib.md5(daten).hexdigest()
                 if ist != md5:
                     # Wortlaut des Updaters (Updater.cpp, getErrorString).
                     text = "MD5 Failed: expected:%s, calculated:%s" % (md5, ist)
                     LOGS.append("[ota] abgelehnt: " + text)
-                    return self._json(200, {"status": "error", "message": text})
+                    return self._json(200, ergebnis(False, text))
             LOGS.append("[ota] Upload angenommen (Mock: nichts geschrieben)")
-            return self._json(200, {"status": "ok",
-                                    "message": "Mock: nichts geflasht, Datei verworfen"})
+            return self._json(200, ergebnis(True, "Mock: nichts geflasht, Datei verworfen"))
         return self._fehler(404, "unbekannter Endpunkt")
 
     def _ntp_config(self):
-        global NTP_SERVER, NTP_LETZTER_SYNC
-        server = str(self._body().get("ntp_server") or "")
+        global NTP_SERVER, NTP_LETZTER_SYNC, ZEITZONE
+        d = self._body()
+        server = str(d.get("ntp_server") or "")
         if not server:
-            return self._json(400, {"status": "error", "message": "ntp_server missing"})
+            return self._json(400, ergebnis(False, "Zeitserver fehlt"))
+        # Zeitzone wie die Firmware: freiwillig, leer heisst Vorgabe, sonst geprueft.
+        genannt = isinstance(d.get("zeitzone"), str)
+        tz = str(d.get("zeitzone") or "")
+        if genannt and tz and not zeitzone_gueltig(tz):
+            return self._json(400, ergebnis(
+                False, "Zeitzone ungueltig -- erwartet wird eine Regel wie "
+                       "CET-1CEST,M3.5.0,M10.5.0/3"))
         NTP_SERVER = server
+        if genannt:
+            ZEITZONE = tz or ZEITZONE_VORGABE
         NTP_LETZTER_SYNC = int(time.time())  # wie die Firmware: Speichern loest einen Sync aus
-        return self._json(200, {"status": "ok", "ntp_server": server})
+        return self._json(200, ergebnis(True, "Gespeichert", ntp_server=server, zeitzone=ZEITZONE))
 
     def _rotation_setzen(self):
         global ROTATION
         d = self._body()
         if not isinstance(d.get("rotation"), int):
-            return self._json(400, {"status": "error", "message": "Invalid JSON or missing rotation"})
+            return self._json(400, ergebnis(False, "Drehung fehlt oder ist keine Zahl"))
         r = d["rotation"]
         if not 0 <= r <= 7:
-            return self._json(400, {"status": "error", "message": "rotation must be between 0 and 7"})
+            return self._json(400, ergebnis(False, "Drehung nur 0 bis 7"))
         ROTATION = r
-        return self._json(200, {"status": "ok", "rotation": r})
+        return self._json(200, ergebnis(True, "Drehung uebernommen", rotation=r))
 
     def _token_speichern(self):
         """Bildet handleTokenSave() nach: setzt oder loescht das Passwort zur Laufzeit.
@@ -559,11 +636,11 @@ class Handler(BaseHTTPRequestHandler):
         global AKTIVER_TOKEN
         d = self._body()
         if not isinstance(d.get("token"), str):
-            return self._json(400, {"status": "error", "message": "Passwort-Feld fehlt"})
+            return self._json(400, ergebnis(False, "Passwort-Feld fehlt"))
         AKTIVER_TOKEN = d["token"]
         if AKTIVER_TOKEN == "":
-            return self._json(200, {"status": "ok", "message": "Passwortschutz aufgehoben"})
-        return self._json(200, {"status": "ok", "message": "Passwort gespeichert"})
+            return self._json(200, ergebnis(True, "Passwortschutz aufgehoben"))
+        return self._json(200, ergebnis(True, "Passwort gespeichert"))
 
     def _test(self):
         url = (self._body().get("url") or "").strip()
@@ -581,6 +658,39 @@ class Handler(BaseHTTPRequestHandler):
                                     "error": "HTTP %d" % code, "preview": "", "fields": []})
         return self._json(200, {"ok": True, "httpStatus": code,
                                 "preview": body[:1024], "fields": felder_aus(body)})
+
+    def _wiederherstellen(self):
+        """Wie handleSlotsRestore(): ganze Konfiguration in EINEM Zug, ein Schreibvorgang."""
+        d = self._body()
+        if not isinstance(d.get("slots"), list):
+            return self._fehler(400, "Sicherung ohne Werte-Liste")
+        # Wie configFromDoc in der Firmware: uebernehmen und klemmen, nicht ablehnen --
+        # eine Sicherung kommt aus dem Geraet selbst und wurde beim Schreiben geprueft.
+        neu = leere_konfiguration()
+        for feld in ("rotateSec", "colorWarn", "colorAlarm", "helligkeit", "hellModus",
+                     "hellUrl", "hellField", "hellSec", "hellAn", "hellAus",
+                     "nachtAn", "nachtVon", "nachtBis", "nachtHelligkeit"):
+            if feld in d:
+                neu[feld] = d[feld]
+        for i, l in enumerate(d.get("layout", [])[:MAX_PAGES]):
+            neu["layout"][i] = int(l) if int(l) in (0, 1, 2) else 2
+        for i, teil in enumerate(d.get("teilung", [])[:MAX_PAGES]):
+            teil = int(teil)
+            neu["teilung"][i] = teil if teil == 0 or 20 <= teil <= 80 else 0
+        anzahl = 0
+        for i, s in enumerate(d["slots"][:MAX_SLOTS]):
+            if not isinstance(s, dict) or not str(s.get("url") or ""):
+                continue
+            eintrag = dict(neu["slots"][i])
+            eintrag.update({k: v for k, v in s.items() if k in eintrag})
+            neu["slots"][i] = eintrag
+            anzahl += 1
+        CONFIG.clear()
+        CONFIG.update(neu)
+        ABRUF_CACHE.clear()
+        FEHLZAEHLER.clear()
+        LETZTER_WERT.clear()
+        return self._json(200, ergebnis(True, "Sicherung uebernommen", werte=anzahl))
 
     def _einstellungen(self):
         """Bildet settingsFromDoc der Firmware nach -- inklusive der Ablehnung.
@@ -656,7 +766,7 @@ class Handler(BaseHTTPRequestHandler):
         CONFIG["nachtBis"] = bis
         CONFIG["nachtHelligkeit"] = max(
             0, min(100, int(d.get("nachtHelligkeit", CONFIG["nachtHelligkeit"]))))
-        return self._json(200, {"ok": True})
+        return self._json(200, ergebnis(True, "Gespeichert"))
 
     def _slot_speichern(self):
         d = self._body()
@@ -712,16 +822,21 @@ class Handler(BaseHTTPRequestHandler):
         anzeige = int(d.get("anzeige") or 0)
         if anzeige not in (0, 1, 2):
             return self._fehler(400, "Darstellungsart unbekannt")
-        # Die drei Schriftstufen wie in der Firmware: je 1 bis 10, voneinander
-        # unabhaengig. Waere der Mock hier laxer, liesse er Werte durch, die das
-        # Geraet ablehnt -- und die Oberflaeche saehe im Test besser aus als real.
-        for feld, meldung in (("wertSize", "Werts"), ("labelSize", "Beschriftung"),
-                              ("unitSize", "Einheit")):
-            stufe = int(d.get(feld) or 0)
-            if not 1 <= stufe <= 10:
+        # Die drei Schriftstufen wie in der Firmware: je 1 bis 10, voneinander unabhaengig.
+        # FEHLT ein Feld, gilt der Standardwert -- genau wie leseBereich() in der Firmware.
+        # Der Mock lehnte fehlende Felder frueher ab und war damit STRENGER als das Geraet:
+        # eine Sicherung aus einer aelteren Fassung liess sich gegen ihn nicht einspielen,
+        # gegen das Geraet schon.
+        for feld, meldung, standard in (("wertSize", "Werts", STD_WERT_SIZE),
+                                        ("labelSize", "Beschriftung", STD_LABEL_SIZE),
+                                        ("unitSize", "Einheit", STD_UNIT_SIZE)):
+            roh = d.get(feld)
+            stufe = standard if roh in (None, "") else int(roh)
+            if not LIMITS["textStufeMin"] <= stufe <= LIMITS["textStufeMax"]:
                 return self._fehler(
                     400, "Schriftstufe der %s ausserhalb des Bereichs" % meldung
                     if feld != "wertSize" else "Schriftstufe des Werts ausserhalb des Bereichs")
+            d[feld] = stufe
         if anzeige != 0 and not (float(d.get("barMax", 100)) > float(d.get("barMin", 0))):
             return self._fehler(400, "Balken-Ende muss groesser als der Anfang sein")
         for j, andere in enumerate(CONFIG["slots"]):
@@ -737,7 +852,7 @@ class Handler(BaseHTTPRequestHandler):
         # Ein abgeschalteter Wert behaelt seine Einstellungen -- nur angezeigt wird er nicht.
         CONFIG["slots"][i] = slot
         FEHLZAEHLER.pop(i, None)
-        return self._json(200, {"ok": True})
+        return self._json(200, ergebnis(True, "Gespeichert"))
 
     def do_DELETE(self):
         p = self.path.split("?")[0]
@@ -754,7 +869,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self._fehler(400, "Slot-Nummer ausserhalb des Bereichs")
             CONFIG["slots"][i] = leerer_slot()
             FEHLZAEHLER.pop(i, None)
-            return self._json(200, {"ok": True})
+            return self._json(200, ergebnis(True, "Gespeichert"))
         return self._fehler(404, "unbekannter Endpunkt")
 
     def log_message(self, *args):

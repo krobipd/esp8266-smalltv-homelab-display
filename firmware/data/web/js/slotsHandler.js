@@ -367,7 +367,7 @@ function slotsHandler() {
         if (this.nichtAngemeldet(antwort)) return;
         const d = await antwort.json();
         if (!d.ok) {
-          this.fehler = d.error || "Speichern abgelehnt";
+          this.fehler = ergebnisVon(r, d).text || "Speichern abgelehnt";
           return;
         }
         this.meldung = "Einstellungen gespeichert.";
@@ -683,7 +683,7 @@ function slotsHandler() {
         if (this.nichtAngemeldet(r)) return;
         const d = await r.json();
         if (!d.ok) {
-          this.fehler = d.error || "Speichern abgelehnt";
+          this.fehler = ergebnisVon(r, d).text || "Speichern abgelehnt";
           return;
         }
         this.meldung = "Gespeichert.";
@@ -711,7 +711,7 @@ function slotsHandler() {
         if (this.nichtAngemeldet(r)) return;
         const d = await r.json();
         if (!d.ok) {
-          this.fehler = d.error || "Löschen abgelehnt";
+          this.fehler = ergebnisVon(r, d).text || "Löschen abgelehnt";
           return;
         }
         this.modus = null;

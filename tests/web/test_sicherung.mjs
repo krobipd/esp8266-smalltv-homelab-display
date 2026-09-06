@@ -23,6 +23,7 @@ const pruefe = (bedingung, text) => {
 
 // Der Browser-Download wird abgefangen: statt einer Datei landet der Inhalt hier.
 let gesichert = null;
+let aufrufe = [];
 const sandbox = {
   console,
   URL: { createObjectURL: () => "blob:test", revokeObjectURL: () => {} },
@@ -35,7 +36,12 @@ const sandbox = {
   String,
   JSON,
   Array,
-  apiFetch: (pfad, opt) => fetch(MOCK + pfad, opt),
+  // Mitzaehlen, WIE die Wiederherstellung laeuft: seit v0.5.0 ein einziger Aufruf
+  // statt bis zu fuenfundzwanzig, von denen jeder in den Flash schrieb.
+  apiFetch: (pfad, opt) => {
+    aufrufe.push(((opt && opt.method) || "GET") + " " + pfad);
+    return fetch(MOCK + pfad, opt);
+  },
 };
 sandbox.globalThis = sandbox;
 vm.createContext(sandbox);
@@ -89,8 +95,11 @@ await fetch(MOCK + "/api/v1/slots", {
 const inhalt = JSON.stringify(gesichert);
 h.$refs.sicherungDatei = { files: [{ name: "s.json", text: async () => inhalt }] };
 h.dateiName = "s.json";
+aufrufe = [];
 await h.einspielen();
 pruefe(!h.fehler, "Einspielen meldete einen Fehler: " + h.fehler);
+pruefe(aufrufe.length === 1 && aufrufe[0] === "POST /api/v1/slots/restore",
+       "Wiederherstellung lief nicht ueber den einen Aufruf: " + JSON.stringify(aufrufe));
 
 // 4) Ergebnis pruefen -- alles muss wieder da sein, der Fremdwert weg.
 const nach = await (await fetch(MOCK + "/api/v1/slots")).json();
@@ -112,4 +121,28 @@ pruefe(h.fehler.includes("Sicherung"), "Fremddatei wurde nicht abgewiesen: " + h
 const unveraendert = await (await fetch(MOCK + "/api/v1/slots")).json();
 pruefe(unveraendert.slots[0].label === "Testwert", "Fremddatei hat den Bestand verändert");
 
-console.log("Sicherung: 5x OK");
+// 6) Rueckfall: Eine aeltere Firmware kennt /slots/restore nicht (404). Dann muss der
+// alte Weg greifen -- sonst waere ein Nutzer im Fenster zwischen Firmware- und
+// Dateisystem-Update ohne Wiederherstellung.
+const echtesFetch = sandbox.apiFetch;
+sandbox.apiFetch = (pfad, opt) => {
+  aufrufe.push(((opt && opt.method) || "GET") + " " + pfad);
+  if (pfad === "/api/v1/slots/restore") {
+    return Promise.resolve({ status: 404, ok: false, json: async () => ({}) });
+  }
+  return fetch(MOCK + pfad, opt);
+};
+h.$refs.sicherungDatei = { files: [{ name: "s.json", text: async () => inhalt }] };
+h.dateiName = "s.json";
+h.fehler = "";
+aufrufe = [];
+await h.einspielen();
+pruefe(!h.fehler, "Rueckfallweg meldete einen Fehler: " + h.fehler);
+pruefe(aufrufe.some((a) => a.startsWith("POST /api/v1/slots ")) || aufrufe.includes("POST /api/v1/slots"),
+       "Rueckfall hat keine Werte einzeln angelegt: " + JSON.stringify(aufrufe));
+const nachRueckfall = await (await fetch(MOCK + "/api/v1/slots")).json();
+pruefe(nachRueckfall.slots[0].label === "Testwert",
+       "Rueckfallweg hat nicht wiederhergestellt: " + nachRueckfall.slots[0].label);
+sandbox.apiFetch = echtesFetch;
+
+console.log("Sicherung: 7x OK");

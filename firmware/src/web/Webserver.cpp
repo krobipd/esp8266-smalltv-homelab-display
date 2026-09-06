@@ -31,7 +31,6 @@
 #include "project_version.h"
 #include "web/Webserver.h"
 
-static constexpr size_t URI_BUF_SIZE = 192;
 static constexpr size_t PATH_BUF_SIZE = 256;
 
 namespace {
@@ -48,6 +47,7 @@ Webserver::Webserver(uint16_t port) : _server(port) {}
  */
 void Webserver::begin() {
     Logger::info("Starting webserver", "Webserver");
+    ladeDateisystemKennung();
     _server.begin();
 }
 // NOLINTEND(readability-convert-member-functions-to-static)
@@ -67,8 +67,40 @@ void Webserver::handleClient() { _server.handleClient(); }
  *
  * @return void
  */
+// Kennung des Dateisystems, beim Bauen aus dem Inhalt aller Web-Dateien erzeugt
+// (scripts/fs_build_id.py). Leer, solange sie nicht gelesen wurde oder das Abbild sie
+// nicht mitbringt -- dann gilt die Firmware-Version wie vor v0.5.0.
+static char g_fsKennung[16] = {0};
+
+void Webserver::ladeDateisystemKennung() {
+    g_fsKennung[0] = 0;
+    File f = LittleFS.open("/web/BUILD", "r");
+    if (!f) {
+        Logger::info("Keine Dateisystem-Kennung (/web/BUILD) -- Cache haengt an der Version",
+                     "Webserver");
+        return;
+    }
+    const size_t gelesen = f.readBytes(g_fsKennung, sizeof(g_fsKennung) - 1);
+    f.close();
+    g_fsKennung[gelesen] = 0;
+    // Nur Hex-Ziffern gelten; alles andere (Zeilenende, Muell) beendet die Kennung.
+    for (size_t i = 0; g_fsKennung[i] != 0; i++) {
+        const char c = g_fsKennung[i];
+        const bool hex = (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f');
+        if (!hex) {
+            g_fsKennung[i] = 0;
+            break;
+        }
+    }
+    if (g_fsKennung[0] == 0) {
+        Logger::warn("Dateisystem-Kennung unlesbar -- Cache haengt an der Version", "Webserver");
+        return;
+    }
+    Logger::info((String("Dateisystem-Kennung: ") + g_fsKennung).c_str(), "Webserver");
+}
+
 void Webserver::baueEtag(char* out, size_t outSize, size_t dateiGroesse) {
-    ::baueEtag(out, outSize, PROJECT_VER_STR, dateiGroesse);
+    ::baueEtag(out, outSize, g_fsKennung[0] != 0 ? g_fsKennung : PROJECT_VER_STR, dateiGroesse);
 }
 
 /**
@@ -120,21 +152,15 @@ void Webserver::serveStaticC(const char* uriC, const char* pathC, const char* co
         const char* chosenPath = pathC;
         const char* contentTypeStr = contentTypeC;
 
-        if (!LittleFS.exists(chosenPath)) {
+        // Direkt oeffnen statt erst exists() zu fragen: Beides laeuft ueber dieselbe
+        // Verzeichnissuche im Dateisystem, und ein fehlgeschlagenes open() sagt genau
+        // dasselbe wie ein negatives exists().
+        File f = LittleFS.open(chosenPath, "r");
+        if (!f) {
             char msg[320];
             snprintf(msg, sizeof(msg), "File not found: %s", chosenPath);
             Logger::error(msg, "Webserver");
             _server.send(HTTP_CODE_NOT_FOUND, "text/plain", "Not found");
-
-            return;
-        }
-
-        File f = LittleFS.open(chosenPath, "r");
-        if (!f) {
-            char msg[320];
-            snprintf(msg, sizeof(msg), "Failed to open file: %s", chosenPath);
-            Logger::error(msg, "Webserver");
-            _server.send(HTTP_CODE_INTERNAL_ERROR, "text/plain", "Open failed");
 
             return;
         }
@@ -200,27 +226,19 @@ void Webserver::registerGenericStaticFallback(  // NOLINT(readability-convert-me
             return;
         }
 
-        char uriBuf[URI_BUF_SIZE] = {0};
+        // EIN Pfadpuffer statt dreier: uriBuf war eine Kopie von uri.c_str(), chosenPath
+        // eine Kopie von fsPath. Das sind 448 Byte Stapelspeicher weniger in einem
+        // Rueckruf, der im Webserver ohnehin tief steht (Befund F).
         char fsPath[PATH_BUF_SIZE] = {0};
-        char chosenPath[PATH_BUF_SIZE] = {0};
-
-        strncpy(uriBuf, uri.c_str(), sizeof(uriBuf) - 1);
-
-        if (snprintf(fsPath, sizeof(fsPath), "%s%s", basePath.c_str(), uriBuf) <= 0) {
+        if (snprintf(fsPath, sizeof(fsPath), "%s%s", basePath.c_str(), uri.c_str()) <= 0) {
             _server.send(HTTP_CODE_INTERNAL_ERROR, "text/plain", "Path error");
             return;
         }
 
-        if (LittleFS.exists(fsPath)) {
-            strncpy(chosenPath, fsPath, sizeof(chosenPath) - 1);
-        } else {
-            _server.send(HTTP_CODE_NOT_FOUND, "text/plain", "Not found");
-            return;
-        }
-
-        File f = LittleFS.open(chosenPath, "r");
+        // Direkt oeffnen statt erst exists(): dieselbe Verzeichnissuche, halb so oft.
+        File f = LittleFS.open(fsPath, "r");
         if (!f) {
-            _server.send(HTTP_CODE_INTERNAL_ERROR, "text/plain", "Open failed");
+            _server.send(HTTP_CODE_NOT_FOUND, "text/plain", "Not found");
             return;
         }
 

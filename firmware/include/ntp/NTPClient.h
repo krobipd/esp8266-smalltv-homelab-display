@@ -31,6 +31,15 @@ class NTPClient {
    public:
     NTPClient();
     void begin(uint32_t syncIntervalSeconds = 6 * 3600, uint8_t maxRetries = 3);
+
+    /// Setzt die Zeitzone als POSIX-TZ-Regel. nullptr oder leer heisst: die Vorgabe des
+    /// Geraets (Mitteleuropa). Wirkt sofort auf jede folgende Ortszeit-Umrechnung --
+    /// die Uhr selbst laeuft in UTC und wird davon nicht beruehrt.
+    static void zeitzoneAnwenden(const char* tz);
+    /// Die gerade gesetzte Regel (nie leer).
+    static const char* zeitzone();
+    /// Sieht die Zeichenkette wie eine POSIX-TZ-Regel aus?
+    static bool zeitzoneGueltig(const char* tz);
     void loop();
     /// Sofort-Sync fuer die Web-API: wartet begrenzt (~5 s) auf ein Ergebnis.
     /// Kommt keins, laeuft der Versuch im Hintergrund weiter (loop()).
