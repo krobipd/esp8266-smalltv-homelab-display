@@ -102,8 +102,14 @@ function otaUploadHandler() {
         try {
           if (this.xhr.status >= 200 && this.xhr.status < 300) {
             const data = JSON.parse(this.xhr.responseText || "{}");
-            this.uploadMessage = data.message || "Hochladen abgeschlossen";
-            this.progress = 100;
+            // Das Gerät antwortet auch bei einem abgelehnten Abbild mit HTTP 200 --
+            // die Ablehnung steht in status ("error"), nicht im Statuscode. Ohne diese
+            // Auswertung sah ein verworfenes Update wie ein gelungenes aus.
+            const abgelehnt = data.status === "error";
+            this.uploadMessage =
+              (abgelehnt ? "Abgelehnt: " : "") +
+              (data.message || (abgelehnt ? "Update abgelehnt" : "Hochladen abgeschlossen"));
+            this.progress = abgelehnt ? 0 : 100;
             this.etaText = "";
           } else {
             this.uploadMessage =

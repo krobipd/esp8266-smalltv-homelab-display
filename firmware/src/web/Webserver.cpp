@@ -275,15 +275,6 @@ void Webserver::registerGenericStaticFallback(  // NOLINT(readability-convert-me
     }
 
     _server.onNotFound([this, basePath, excludeRoot]() {
-        if (_server.method() == HTTP_OPTIONS) {
-            _server.sendHeader("Access-Control-Allow-Origin", "*");
-            _server.sendHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
-            _server.sendHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
-            _server.sendHeader("Access-Control-Max-Age", "3600");
-            _server.send(HTTP_CODE_OK);
-            return;
-        }
-
         if (_server.method() != HTTP_GET) {
             _server.send(HTTP_CODE_NOT_FOUND, "text/plain", "Not found");
             return;

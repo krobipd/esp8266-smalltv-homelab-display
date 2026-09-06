@@ -48,14 +48,14 @@ const dateisystem = datei("littlefs");
 // 1) Falsche Sorte auf beiden Wegen -> Ablehnung, und zwar mit klarer Ansage.
 {
   const d = await hochladen("/api/v1/ota/fw", dateisystem, md5(dateisystem));
-  pruefe(d.status === "Error", `Dateisystem auf Firmware-Weg: status "${d.status}"`);
+  pruefe(d.status === "error", `Dateisystem auf Firmware-Weg: status "${d.status}"`);
   pruefe(/Firmware-Abbild/.test(d.message || ""), `Meldung nennt die Sorte nicht: ${d.message}`);
   pruefe(/nichts geschrieben/.test(d.message || ""),
          `Meldung sagt nicht, dass nichts geschrieben wurde: ${d.message}`);
 }
 {
   const d = await hochladen("/api/v1/ota/fs", firmware, md5(firmware));
-  pruefe(d.status === "Error", `Firmware auf Dateisystem-Weg: status "${d.status}"`);
+  pruefe(d.status === "error", `Firmware auf Dateisystem-Weg: status "${d.status}"`);
   pruefe(/Oberflaeche/.test(d.message || ""), `Meldung nennt die Sorte nicht: ${d.message}`);
 }
 
@@ -63,7 +63,7 @@ const dateisystem = datei("littlefs");
 {
   const fremd = Buffer.from("PKnicht mal ein Abbild");
   const d = await hochladen("/api/v1/ota/fw", fremd, md5(fremd));
-  pruefe(d.status === "Error", `fremde Datei: status "${d.status}"`);
+  pruefe(d.status === "error", `fremde Datei: status "${d.status}"`);
   pruefe(/weder/.test(d.message || ""), `Meldung fuer fremde Datei: ${d.message}`);
 }
 
@@ -71,10 +71,10 @@ const dateisystem = datei("littlefs");
 //    mit falscher Summe ebenfalls -- und zwar so, dass der Grund im Text steht.
 {
   const d = await hochladen("/api/v1/ota/fw", firmware);
-  pruefe(d.status === "Error", `Firmware ohne Pruefsumme: status "${d.status}"`);
+  pruefe(d.status === "error", `Firmware ohne Pruefsumme: status "${d.status}"`);
   pruefe(/Pruefsumme/.test(d.message || ""), `Meldung nennt die Pruefsumme nicht: ${d.message}`);
   const e = await hochladen("/api/v1/ota/fw", firmware, "0".repeat(32));
-  pruefe(e.status === "Error", `Firmware mit falscher Pruefsumme: status "${e.status}"`);
+  pruefe(e.status === "error", `Firmware mit falscher Pruefsumme: status "${e.status}"`);
   pruefe(/MD5/.test(e.message || ""), `Meldung nennt MD5 nicht: ${e.message}`);
 }
 
@@ -82,11 +82,11 @@ const dateisystem = datei("littlefs");
 //    ablehnt, waere schlimmer als keine. Beim Dateisystem ist die Summe freiwillig.
 {
   const d = await hochladen("/api/v1/ota/fw", firmware, md5(firmware));
-  pruefe(d.status === "Upload successful", `Firmware auf Firmware-Weg: status "${d.status}"`);
+  pruefe(d.status === "ok", `Firmware auf Firmware-Weg: status "${d.status}"`);
   const e = await hochladen("/api/v1/ota/fs", dateisystem, md5(dateisystem));
-  pruefe(e.status === "Upload successful", `Dateisystem mit Summe: status "${e.status}"`);
+  pruefe(e.status === "ok", `Dateisystem mit Summe: status "${e.status}"`);
   const f = await hochladen("/api/v1/ota/fs", dateisystem);
-  pruefe(f.status === "Upload successful", `Dateisystem ohne Summe: status "${f.status}"`);
+  pruefe(f.status === "ok", `Dateisystem ohne Summe: status "${f.status}"`);
 }
 
 if (fehler > 0) process.exit(1);

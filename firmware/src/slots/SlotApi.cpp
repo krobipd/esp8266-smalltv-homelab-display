@@ -27,6 +27,7 @@
 #include "slots/SlotRuntime.h"
 #include "slots/SlotStore.h"
 #include "web/Api.h"
+#include "web/antwort.h"
 
 // Fehlerformat-Regel: Unsere Slot-Endpunkte antworten {ok:false, error:"..."} plus
 // HTTP-Status; die Basis-Endpunkte (Token, NTP, ...) antworten {status:"error",
@@ -39,23 +40,6 @@ Config* g_cfg = nullptr;
 /// Warnhinweis fuer die Oberflaeche (z. B. "Konfiguration war unlesbar") -- gesetzt
 /// beim Start, ausgeliefert mit GET /slots, bis der erste Speichervorgang gelingt.
 char g_ladeWarnung[96] = {0};
-
-void sendeJson(Webserver* webserver, int code, const JsonDocument& doc) {
-    String ausgabe;
-    // Ohne dies waechst der String in 16-Byte-Schritten mit, bei einer vollen
-    // Konfiguration also ueber hundertmal.
-    ausgabe.reserve(measureJson(doc) + 1);
-    serializeJson(doc, ausgabe);
-    setCorsHeaders(webserver);
-    webserver->raw().send(code, "application/json", ausgabe);
-}
-
-void sendeFehler(Webserver* webserver, int code, const char* text) {
-    JsonDocument doc;
-    doc["ok"] = false;
-    doc["error"] = text;
-    sendeJson(webserver, code, doc);
-}
 
 /// Gemeinsamer Persistenz-Schritt ALLER schreibenden Handler: speichert die
 /// Konfiguration; bei Erfolg ist ein Start-Warnhinweis Geschichte, bei einem

@@ -285,15 +285,6 @@ auto RescueMode::drawDebugScreen() -> void {
 }
 
 /**
- * @brief Set CORS headers for rescue API responses
- */
-static void rescueCors() {
-    rescueWebserver->raw().sendHeader("Access-Control-Allow-Origin", "*");
-    rescueWebserver->raw().sendHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-    rescueWebserver->raw().sendHeader("Access-Control-Allow-Headers", "Content-Type");
-}
-
-/**
  * @brief Handle GET /api/v1/rescue/status – return JSON with system info
  */
 static void handleRescueStatus() {
@@ -326,7 +317,6 @@ static void handleRescueStatus() {
     String json;
     serializeJson(doc, json);
 
-    rescueCors();
     rescueWebserver->raw().send(HTTP_CODE_OK, "application/json", json);
 }
 
@@ -344,7 +334,6 @@ static void handleRescueTokenReset() {
         String json;
         serializeJson(doc, json);
 
-        rescueCors();
         rescueWebserver->raw().send(HTTP_CODE_BAD_REQUEST, "application/json", json);
 
         return;
@@ -363,7 +352,6 @@ static void handleRescueTokenReset() {
         String json;
         serializeJson(doc, json);
 
-        rescueCors();
         rescueWebserver->raw().send(HTTP_CODE_BAD_REQUEST, "application/json", json);
 
         return;
@@ -380,7 +368,6 @@ static void handleRescueTokenReset() {
         String json;
         serializeJson(doc, json);
 
-        rescueCors();
         rescueWebserver->raw().send(HTTP_CODE_BAD_REQUEST, "application/json", json);
 
         return;
@@ -398,7 +385,6 @@ static void handleRescueTokenReset() {
     String json;
     serializeJson(doc, json);
 
-    rescueCors();
     rescueWebserver->raw().send(HTTP_CODE_OK, "application/json", json);
 
     Logger::info("API token reset via rescue mode", "RescueMode");
@@ -418,7 +404,6 @@ static void handleRescueReboot() {
 
     RescueMode::markBootStable();
 
-    rescueCors();
     rescueWebserver->raw().send(HTTP_CODE_OK, "application/json", json);
 
     delay(REBOOT_DELAY_MS);
@@ -481,7 +466,6 @@ static void handleRescueOtaFinished() {
     String json;
     serializeJson(doc, json);
 
-    rescueCors();
     rescueWebserver->raw().send(HTTP_CODE_OK, "application/json", json);
 
     if (!Update.hasError()) {
@@ -515,7 +499,6 @@ static void handleRescueReset() {
     String json;
     serializeJson(doc, json);
 
-    rescueCors();
     rescueWebserver->raw().send(HTTP_CODE_OK, "application/json", json);
 
     Logger::info("Rescue counters reset via rescue API", "RescueMode");
@@ -543,7 +526,6 @@ auto RescueMode::registerRescueApi() -> void {
     // CORS preflight
     rescueWebserver->raw().onNotFound([]() {
         if (rescueWebserver->raw().method() == HTTP_OPTIONS) {
-            rescueCors();
             rescueWebserver->raw().send(HTTP_CODE_OK);
         } else {
             rescueWebserver->raw().send(HTTP_CODE_NOT_FOUND, "text/plain", "Not found");

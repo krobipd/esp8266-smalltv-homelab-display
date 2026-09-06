@@ -25,6 +25,7 @@
 #include "web/Webserver.h"
 #include "abbild_art.h"
 #include "web/Api.h"
+#include "web/antwort.h"
 #include "display/DisplayManager.h"
 #include "slots/SlotApi.h"
 #include "slots/SlotDisplay.h"
@@ -42,6 +43,11 @@ static size_t otaSize = 0;
 static String otaStatus;
 static volatile bool otaInProgress = false;
 static volatile bool otaCancelRequested = false;
+// Bei einem Upload laufen ZWEI Handler: erst der Upload-Handler (Brocken fuer Brocken),
+// danach der Abschluss-Handler. Lehnt der erste die Anfrage mangels Passwort ab, hat er
+// die 401 bereits gesendet -- der Abschluss darf dann nichts mehr senden, sonst gingen
+// zwei Antworten auf eine Anfrage hinaus.
+static bool otaZugangAbgelehnt = false;
 static size_t otaTotal = 0;
 
 static constexpr int OTA_TEXT_X_OFFSET = 50;
@@ -70,97 +76,36 @@ void registerApiEndpoints(Webserver* webserver) {
     // ersetzt die Liste, haelt Authorization und If-None-Match aber von sich aus fest.
     webserver->raw().collectHeaders("X-Abbild-MD5");
 
-    // @openapi {get} /wifi/scan version=v1 group=WiFi summary="Scan available WiFi networks" requiresAuth=true
-    // responses=200:application/json,401:application/json
-    webserver->raw().on("/api/v1/wifi/scan", HTTP_GET, [webserver]() { handleWifiScan(webserver); });
+    // Alle einfachen Routen laufen ueber geschuetzt(): die Passwortpruefung haengt an
+    // der Tabelle, nicht an einer wiederholten Zeile in jedem Handler. Die beiden
+    // OTA-Uploads bleiben von Hand registriert -- sie brauchen einen zweiten
+    // (Upload-)Handler und pruefen beim ersten Brocken.
+    geschuetzt(webserver, "/api/v1/wifi/scan", HTTP_GET, handleWifiScan);
+    geschuetzt(webserver, "/api/v1/wifi/connect", HTTP_POST, handleWifiConnect);
+    geschuetzt(webserver, "/api/v1/wifi/status", HTTP_GET, handleWifiStatus);
+    geschuetzt(webserver, "/api/v1/ntp/sync", HTTP_POST, handleNtpSync);
+    geschuetzt(webserver, "/api/v1/ntp/status", HTTP_GET, handleNtpStatus);
+    geschuetzt(webserver, "/api/v1/ntp/config", HTTP_GET, handleNtpConfigGet);
+    geschuetzt(webserver, "/api/v1/ntp/config", HTTP_POST, handleNtpConfigSet);
+    geschuetzt(webserver, "/api/v1/display/rotation", HTTP_GET, handleDisplayRotationGet);
+    geschuetzt(webserver, "/api/v1/display/rotation", HTTP_POST, handleDisplayRotationSet);
+    geschuetzt(webserver, "/api/v1/reboot", HTTP_POST, handleReboot);
+    geschuetzt(webserver, "/api/v1/ota/status", HTTP_GET, handleOtaStatus);
+    geschuetzt(webserver, "/api/v1/ota/cancel", HTTP_POST, handleOtaCancel);
+    geschuetzt(webserver, "/api/v1/token/check", HTTP_GET, handleTokenCheck);
+    geschuetzt(webserver, "/api/v1/token/save", HTTP_POST, handleTokenSave);
+    geschuetzt(webserver, "/api/v1/logs", HTTP_GET, handleLogsGet);
+    geschuetzt(webserver, "/api/v1/logs/download", HTTP_GET, handleLogsDownload);
+    geschuetzt(webserver, "/api/v1/logs/clear", HTTP_POST, handleLogsClear);
 
-    // @openapi {post} /wifi/connect version=v1 group=WiFi summary="Connect to a WiFi network" requiresAuth=true
-    // requestBody=application/json requestBodySchema=ssid:string,password:string
-    // example={"ssid":"MyNetwork","password":"password123"}
-    // responses=200:application/json,400:application/json,401:application/json
-    webserver->raw().on("/api/v1/wifi/connect", HTTP_POST, [webserver]() { handleWifiConnect(webserver); });
-
-    // @openapi {get} /wifi/status version=v1 group=WiFi summary="Get WiFi connection status" requiresAuth=true
-    // responses=200:application/json,401:application/json
-    webserver->raw().on("/api/v1/wifi/status", HTTP_GET, [webserver]() { handleWifiStatus(webserver); });
-
-    // @openapi {post} /ntp/sync version=v1 group=NTP summary="Trigger NTP sync" requiresAuth=true
-    // responses=200:application/json,401:application/json
-    webserver->raw().on("/api/v1/ntp/sync", HTTP_POST, [webserver]() { handleNtpSync(webserver); });
-
-    // @openapi {get} /ntp/status version=v1 group=NTP summary="Get NTP status" requiresAuth=true
-    // responses=200:application/json,401:application/json
-    webserver->raw().on("/api/v1/ntp/status", HTTP_GET, [webserver]() { handleNtpStatus(webserver); });
-
-    // @openapi {get} /ntp/config version=v1 group=NTP summary="Get NTP configuration" requiresAuth=true
-    // responses=200:application/json,401:application/json
-    webserver->raw().on("/api/v1/ntp/config", HTTP_GET, [webserver]() { handleNtpConfigGet(webserver); });
-
-    // @openapi {post} /ntp/config version=v1 group=NTP summary="Set NTP configuration" requiresAuth=true
-    // requestBody=application/json requestBodySchema=ntp_server:string example={"ntp_server":"pool.ntp.org"}
-    // responses=200:application/json,400:application/json,401:application/json
-    webserver->raw().on("/api/v1/ntp/config", HTTP_POST, [webserver]() { handleNtpConfigSet(webserver); });
-
-    // @openapi {get} /display/rotation version=v1 group=Display summary="Get display rotation" requiresAuth=true
-    // responses=200:application/json,401:application/json
-    webserver->raw().on("/api/v1/display/rotation", HTTP_GET, [webserver]() { handleDisplayRotationGet(webserver); });
-
-    // @openapi {post} /display/rotation version=v1 group=Display summary="Set display rotation" requiresAuth=true
-    // requestBody=application/json requestBodySchema=rotation:integer example={"rotation":4}
-    // responses=200:application/json,400:application/json,401:application/json
-    webserver->raw().on("/api/v1/display/rotation", HTTP_POST, [webserver]() { handleDisplayRotationSet(webserver); });
-
-    // @openapi {post} /reboot version=v1 group=System summary="Reboot the device" requiresAuth=true
-    // responses=200:application/json,401:application/json
-    webserver->raw().on("/api/v1/reboot", HTTP_POST, [webserver]() { handleReboot(webserver); });
-
-    // @openapi {post} /ota/fw version=v1 group=OTA summary="Upload firmware (OTA)" requiresAuth=true
-    // requestBody=multipart/form-data responses=200:application/json,401:application/json
     webserver->raw().on(
         "/api/v1/ota/fw", HTTP_POST, [webserver]() { handleOtaFinished(webserver); },
         [webserver]() { handleOtaUpload(webserver, U_FLASH); });
-
-    // @openapi {post} /ota/fs version=v1 group=OTA summary="Upload filesystem (OTA)" requiresAuth=true
-    // requestBody=multipart/form-data responses=200:application/json,401:application/json
     webserver->raw().on(
         "/api/v1/ota/fs", HTTP_POST, [webserver]() { handleOtaFinished(webserver); },
         [webserver]() { handleOtaUpload(webserver, U_FS); });
 
-    // @openapi {get} /ota/status version=v1 group=OTA summary="Get OTA status" requiresAuth=true
-    // responses=200:application/json,401:application/json
-    webserver->raw().on("/api/v1/ota/status", HTTP_GET, [webserver]() { handleOtaStatus(webserver); });
-
-    // @openapi {post} /ota/cancel version=v1 group=OTA summary="Cancel OTA" requiresAuth=true
-    // responses=200:application/json,401:application/json
-    webserver->raw().on("/api/v1/ota/cancel", HTTP_POST, [webserver]() { handleOtaCancel(webserver); });
-
-    // @openapi {get} /token/check version=v1 group=Authentication summary="Check bearer token validity"
-    // requiresAuth=true responses=200:application/json,401:application/json
-    webserver->raw().on("/api/v1/token/check", HTTP_GET, [webserver]() { handleTokenCheck(webserver); });
-
-    // @openapi {post} /token/save version=v1 group=Authentication summary="Save a new bearer token" requiresAuth=true
-    // requestBody=application/json requestBodySchema=token:string example={"token":"your_secure_token_value"}
-    // responses=200:application/json,401:application/json,400:application/json
-    webserver->raw().on("/api/v1/token/save", HTTP_POST, [webserver]() { handleTokenSave(webserver); });
-
-    // @openapi {get} /logs version=v1 group=System summary="Get recent logs" requiresAuth=true
-    // responses=200:application/json,401:application/json
-    webserver->raw().on("/api/v1/logs", HTTP_GET, [webserver]() { handleLogsGet(webserver); });
-
-    // @openapi {get} /logs/download version=v1 group=System summary="Download logs as text file" requiresAuth=true
-    // responses=200:text/plain,401:application/json
-    webserver->raw().on("/api/v1/logs/download", HTTP_GET, [webserver]() { handleLogsDownload(webserver); });
-
-    // @openapi {post} /logs/clear version=v1 group=System summary="Clear log buffer" requiresAuth=true
-    // responses=200:application/json,401:application/json
-    webserver->raw().on("/api/v1/logs/clear", HTTP_POST, [webserver]() { handleLogsClear(webserver); });
-
     webserver->raw().onNotFound([webserver]() {
-        setCorsHeaders(webserver);
-        if (webserver->raw().method() == HTTP_OPTIONS) {
-            webserver->raw().send(HTTP_CODE_OK);
-            return;
-        }
         // Auch antworten, wenn nichts passt: Im Erstinstallations-Modus (leeres
         // Dateisystem) ist dieser Handler der einzige -- ohne Antwort hinge jeder
         // 404-Aufruf bis zum Timeout des Clients.
@@ -168,17 +113,17 @@ void registerApiEndpoints(Webserver* webserver) {
     });
 }
 
-/**
- * @brief Set CORS headers for API responses
- * @param webserver Pointer to the Webserver instance
- *
- * @return void
- */
-void setCorsHeaders(Webserver* webserver) {
-    webserver->raw().sendHeader("Access-Control-Allow-Origin", "*");
-    webserver->raw().sendHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
-    webserver->raw().sendHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
-    webserver->raw().sendHeader("Access-Control-Max-Age", "3600");
+// Die Schnittstelle bedient die eigene Oberflaeche auf demselben Geraet (same-origin).
+// CORS-Kopfzeilen gab es nur als Erbe der Basis-Firmware; sie erlaubten jeder fremden
+// Seite im Browser des Nutzers, das Geraet anzusprechen. Ersatzlos entfernt (E4).
+void geschuetzt(Webserver* webserver, const char* uri, HTTPMethod methode,
+                void (*handler)(Webserver*)) {
+    webserver->raw().on(uri, methode, [webserver, handler]() {
+        if (!requireBearerToken(webserver)) {
+            return;
+        }
+        handler(webserver);
+    });
 }
 
 /**
@@ -221,15 +166,7 @@ auto requireBearerToken(Webserver* webserver) -> bool {
         return true;
     }
 
-    JsonDocument doc;
-    doc["status"] = "error";
-    doc["message"] = "Passwort fehlt oder ist falsch";
-
-    String json;
-    serializeJson(doc, json);
-
-    setCorsHeaders(webserver);
-    webserver->raw().send(HTTP_CODE_UNAUTHORIZED, "application/json", json);
+    sendeFehlerStatus(webserver, HTTP_CODE_UNAUTHORIZED, "Passwort fehlt oder ist falsch");
 
     Logger::warn(("Unauthorized request from " + webserver->raw().client().remoteIP().toString()).c_str(), "API");
 
@@ -237,69 +174,18 @@ auto requireBearerToken(Webserver* webserver) -> bool {
 }
 
 /**
- * @brief Check if bearer token is valid
- * @param webserver Pointer to the Webserver instance
- *
- * @return void
+ * @brief Passwort pruefen (die Pruefung selbst macht geschuetzt())
  */
 void handleTokenCheck(Webserver* webserver) {
-    if (!requireBearerToken(webserver)) {
-        return;
-    }
-
-    JsonDocument doc;
-    doc["status"] = "ok";
-    doc["message"] = "Passwort ist gueltig";
-
-    String json;
-    serializeJson(doc, json);
-
-    setCorsHeaders(webserver);
-    webserver->raw().send(HTTP_CODE_OK, "application/json", json);
+    sendeStatus(webserver, HTTP_CODE_OK, "ok", "Passwort ist gueltig");
 }
 
 /**
- * @brief Save a new bearer token
- * @param webserver Pointer to the Webserver instance
- *
- * @return void
+ * @brief Neues Passwort speichern
  */
 void handleTokenSave(Webserver* webserver) {
-    if (!requireBearerToken(webserver)) {
-        return;
-    }
-
-    if (!webserver->raw().hasArg("plain") || webserver->raw().arg("plain").length() == 0) {
-        JsonDocument doc;
-        doc["status"] = "error";
-        doc["message"] = "Anfrage ohne Inhalt";
-
-        String json;
-        serializeJson(doc, json);
-
-        setCorsHeaders(webserver);
-        webserver->raw().send(HTTP_CODE_BAD_REQUEST, "application/json", json);
-
-        return;
-    }
-
-    String body = webserver->raw().arg("plain");
     JsonDocument ddoc;
-    DeserializationError err = deserializeJson(ddoc, body);
-
-    if (err) {
-        JsonDocument doc;
-        doc["status"] = "error";
-        doc["message"] = "Anfrage ist kein gueltiges JSON";
-
-        String json;
-        serializeJson(doc, json);
-
-        setCorsHeaders(webserver);
-        webserver->raw().send(HTTP_CODE_BAD_REQUEST, "application/json", json);
-
-        Logger::warn("Attempt to save API token with invalid JSON", "API");
-
+    if (!leseJsonKoerper(webserver, ddoc, true)) {
         return;
     }
 
@@ -307,17 +193,7 @@ void handleTokenSave(Webserver* webserver) {
     // darf aber leer sein -- ein leeres Passwort hebt den Schutz auf, das Geraet ist
     // dann wieder frei bedienbar (wie im Werkszustand).
     if (!ddoc["token"].is<const char*>()) {
-        JsonDocument doc;
-        doc["status"] = "error";
-        doc["message"] = "Passwort-Feld fehlt";
-
-        String json;
-        serializeJson(doc, json);
-
-        setCorsHeaders(webserver);
-
-        webserver->raw().send(HTTP_CODE_BAD_REQUEST, "application/json", json);
-
+        sendeFehlerStatus(webserver, HTTP_CODE_BAD_REQUEST, "Passwort-Feld fehlt");
         return;
     }
 
@@ -325,18 +201,13 @@ void handleTokenSave(Webserver* webserver) {
     const bool schutzAus = (strlen(newToken) == 0);
 
     configManager.setApiToken(newToken);
-    configManager.save();
+    if (!configManager.save()) {
+        sendeFehlerStatus(webserver, HTTP_CODE_INTERNAL_ERROR, "Speichern fehlgeschlagen");
+        return;
+    }
 
-    JsonDocument doc;
-    doc["status"] = "ok";
-    doc["message"] = schutzAus ? "Passwortschutz aufgehoben" : "Passwort gespeichert";
-
-    String json;
-    serializeJson(doc, json);
-
-    setCorsHeaders(webserver);
-    webserver->raw().send(HTTP_CODE_OK, "application/json", json);
-
+    sendeStatus(webserver, HTTP_CODE_OK, "ok",
+                schutzAus ? "Passwortschutz aufgehoben" : "Passwort gespeichert");
     Logger::info(schutzAus ? "API password protection disabled" : "API password updated", "API");
 }
 
@@ -344,73 +215,33 @@ void handleTokenSave(Webserver* webserver) {
  * @brief OTA status endpoint
  */
 void handleOtaStatus(Webserver* webserver) {
-    if (!requireBearerToken(webserver)) {
-        return;
-    }
-
     JsonDocument doc;
     doc["inProgress"] = otaInProgress;
     doc["bytesWritten"] = otaSize;
     doc["totalBytes"] = otaTotal;
     doc["error"] = otaError;
     doc["message"] = otaStatus;
-
-    String json;
-    serializeJson(doc, json);
-
-    setCorsHeaders(webserver);
-    webserver->raw().send(HTTP_CODE_OK, "application/json", json);
+    sendeJson(webserver, HTTP_CODE_OK, doc);
 }
 
 /**
  * @brief OTA cancel endpoint
  */
 void handleOtaCancel(Webserver* webserver) {
-    if (!requireBearerToken(webserver)) {
-        return;
-    }
-
     otaCancelRequested = true;
     otaStatus = "Abbruch angefordert";
-
-    JsonDocument doc;
-    doc["status"] = "cancelling";
-    doc["message"] = "Abbruch angefordert";
-
-    String json;
-    serializeJson(doc, json);
-
-    setCorsHeaders(webserver);
-    webserver->raw().send(HTTP_CODE_OK, "application/json", json);
+    sendeStatus(webserver, HTTP_CODE_OK, "cancelling", "Abbruch angefordert");
 }
-
-
-
-
-
-
-
 
 /**
  * @brief Reboot endpoint
- * @param webserver Pointer to the Webserver instance
- *
- * @return void
  */
 void handleReboot(Webserver* webserver) {
-    if (!requireBearerToken(webserver)) {
-        return;
-    }
-
-    JsonDocument doc;
     int constexpr rebootDelayMs = 1000;
 
+    JsonDocument doc;
     doc["status"] = "rebooting";
-    String json;
-    serializeJson(doc, json);
-
-    setCorsHeaders(webserver);
-    webserver->raw().send(HTTP_CODE_OK, "application/json", json);
+    sendeJson(webserver, HTTP_CODE_OK, doc);
 
     delay(rebootDelayMs);
     ESP.restart();  // NOLINT(readability-static-accessed-through-instance)
@@ -420,158 +251,63 @@ void handleReboot(Webserver* webserver) {
  * @brief Manual NTP sync trigger endpoint
  */
 void handleNtpSync(Webserver* webserver) {
-    if (!requireBearerToken(webserver)) {
-        return;
-    }
-
-    JsonDocument doc;
-
     if (ntpClient == nullptr) {
-        doc["status"] = "error";
-        doc["message"] = "Zeitdienst nicht gestartet";
-
-        String json;
-        serializeJson(doc, json);
-
-        setCorsHeaders(webserver);
-        webserver->raw().send(HTTP_CODE_INTERNAL_ERROR, "application/json", json);
-
+        sendeFehlerStatus(webserver, HTTP_CODE_INTERNAL_ERROR, "Zeitdienst nicht gestartet");
         return;
     }
 
     bool syncOk = ntpClient->syncNow();
+
+    JsonDocument doc;
     doc["status"] = syncOk ? "ok" : "error";
     doc["lastStatus"] = ntpClient->lastStatus();
     doc["lastSyncTime"] = ntpClient->lastSyncTime();
-
-    String json;
-    serializeJson(doc, json);
-
-    setCorsHeaders(webserver);
-    webserver->raw().send(HTTP_CODE_OK, "application/json", json);
+    sendeJson(webserver, HTTP_CODE_OK, doc);
 }
 
 /**
  * @brief Return NTP status
  */
 void handleNtpStatus(Webserver* webserver) {
-    if (!requireBearerToken(webserver)) {
+    if (ntpClient == nullptr) {
+        sendeFehlerStatus(webserver, HTTP_CODE_INTERNAL_ERROR, "Zeitdienst nicht gestartet");
         return;
     }
 
     JsonDocument doc;
-
-    if (ntpClient == nullptr) {
-        doc["status"] = "error";
-        doc["message"] = "Zeitdienst nicht gestartet";
-
-        String json;
-        serializeJson(doc, json);
-
-        setCorsHeaders(webserver);
-        webserver->raw().send(HTTP_CODE_INTERNAL_ERROR, "application/json", json);
-        return;
-    }
-
     doc["lastOk"] = ntpClient->lastSyncOk();
     doc["lastStatus"] = ntpClient->lastStatus();
     doc["lastSyncTime"] = ntpClient->lastSyncTime();
-
-    String json;
-    serializeJson(doc, json);
-
-    setCorsHeaders(webserver);
-    webserver->raw().send(HTTP_CODE_OK, "application/json", json);
+    sendeJson(webserver, HTTP_CODE_OK, doc);
 }
 
 /**
  * @brief Get NTP configuration
  */
 void handleNtpConfigGet(Webserver* webserver) {
-    if (!requireBearerToken(webserver)) {
-        return;
-    }
-
     JsonDocument doc;
     doc["ntp_server"] = configManager.getNtpServer();
-
-    String json;
-    serializeJson(doc, json);
-
-    setCorsHeaders(webserver);
-    webserver->raw().send(HTTP_CODE_OK, "application/json", json);
+    sendeJson(webserver, HTTP_CODE_OK, doc);
 }
 
 /**
  * @brief Set NTP configuration
  */
 void handleNtpConfigSet(Webserver* webserver) {
-    if (!requireBearerToken(webserver)) {
-        return;
-    }
-
-    if (!webserver->raw().hasArg("plain") || webserver->raw().arg("plain").length() == 0) {
-        JsonDocument doc;
-        doc["status"] = "error";
-        doc["message"] = "Anfrage ohne Inhalt";
-
-        String json;
-
-        serializeJson(doc, json);
-        setCorsHeaders(webserver);
-        webserver->raw().send(HTTP_CODE_BAD_REQUEST, "application/json", json);
-
-        return;
-    }
-
-    String body = webserver->raw().arg("plain");
     JsonDocument ddoc;
-    DeserializationError err = deserializeJson(ddoc, body);
-
-    if (err) {
-        JsonDocument doc;
-        doc["status"] = "error";
-        doc["message"] = "Anfrage ist kein gueltiges JSON";
-
-        String json;
-        serializeJson(doc, json);
-
-        setCorsHeaders(webserver);
-        webserver->raw().send(HTTP_CODE_BAD_REQUEST, "application/json", json);
-
+    if (!leseJsonKoerper(webserver, ddoc, true)) {
         return;
     }
 
     const char* server = ddoc["ntp_server"] | "";
-
     if (strlen(server) == 0) {
-        JsonDocument doc;
-        doc["status"] = "error";
-        doc["message"] = "Zeitserver fehlt";
-
-        String json;
-        serializeJson(doc, json);
-
-        setCorsHeaders(webserver);
-        webserver->raw().send(HTTP_CODE_BAD_REQUEST, "application/json", json);
-
+        sendeFehlerStatus(webserver, HTTP_CODE_BAD_REQUEST, "Zeitserver fehlt");
         return;
     }
 
     configManager.setNtpServer(server);
-
     if (!configManager.save()) {
-        JsonDocument doc;
-        doc["status"] = "error";
-        doc["message"] = "Speichern fehlgeschlagen";
-
-        String json;
-
-        serializeJson(doc, json);
-
-        setCorsHeaders(webserver);
-        webserver->raw().send(HTTP_CODE_INTERNAL_ERROR, "application/json", json);
-
+        sendeFehlerStatus(webserver, HTTP_CODE_INTERNAL_ERROR, "Speichern fehlgeschlagen");
         return;
     }
 
@@ -585,126 +321,61 @@ void handleNtpConfigSet(Webserver* webserver) {
     JsonDocument doc;
     doc["status"] = "ok";
     doc["ntp_server"] = server;
-    String json;
-    serializeJson(doc, json);
-
-    setCorsHeaders(webserver);
-    webserver->raw().send(HTTP_CODE_OK, "application/json", json);
+    sendeJson(webserver, HTTP_CODE_OK, doc);
 }
 
 /**
  * @brief Get display rotation configuration
  */
 void handleDisplayRotationGet(Webserver* webserver) {
-    if (!requireBearerToken(webserver)) {
-        return;
-    }
-
     JsonDocument doc;
     doc["rotation"] = configManager.getLCDRotationSafe();
-
-    String json;
-    serializeJson(doc, json);
-
-    setCorsHeaders(webserver);
-    webserver->raw().send(HTTP_CODE_OK, "application/json", json);
+    sendeJson(webserver, HTTP_CODE_OK, doc);
 }
 
 /**
  * @brief Set display rotation configuration
  */
 void handleDisplayRotationSet(Webserver* webserver) {
-    if (!requireBearerToken(webserver)) {
-        return;
-    }
-
-    if (!webserver->raw().hasArg("plain") || webserver->raw().arg("plain").length() == 0) {
-        JsonDocument doc;
-        doc["status"] = "error";
-        doc["message"] = "Anfrage ohne Inhalt";
-
-        String json;
-        serializeJson(doc, json);
-
-        setCorsHeaders(webserver);
-        webserver->raw().send(HTTP_CODE_BAD_REQUEST, "application/json", json);
-
-        return;
-    }
-
-    String body = webserver->raw().arg("plain");
     JsonDocument ddoc;
-    DeserializationError err = deserializeJson(ddoc, body);
-
-    if (err || !ddoc["rotation"].is<int>()) {
-        JsonDocument doc;
-        doc["status"] = "error";
-        doc["message"] = "Invalid JSON or missing rotation";
-
-        String json;
-        serializeJson(doc, json);
-
-        setCorsHeaders(webserver);
-        webserver->raw().send(HTTP_CODE_BAD_REQUEST, "application/json", json);
-
+    if (!leseJsonKoerper(webserver, ddoc, true)) {
         return;
     }
 
-    int rotation = ddoc["rotation"].as<int>();
-    const int rotation_range_min = 0;
-    const int rotation_range_max = 7;
+    if (!ddoc["rotation"].is<int>()) {
+        sendeFehlerStatus(webserver, HTTP_CODE_BAD_REQUEST, "Drehung fehlt oder ist keine Zahl");
+        return;
+    }
 
-    if (rotation < rotation_range_min || rotation > rotation_range_max) {
-        JsonDocument doc;
-        doc["status"] = "error";
-        doc["message"] =
-            "Drehung nur " + String(rotation_range_min) + " bis " + String(rotation_range_max);
-
-        String json;
-        serializeJson(doc, json);
-
-        setCorsHeaders(webserver);
-        webserver->raw().send(HTTP_CODE_BAD_REQUEST, "application/json", json);
-
+    const int rotation = ddoc["rotation"].as<int>();
+    const int rotationMin = 0;
+    const int rotationMax = 7;
+    if (rotation < rotationMin || rotation > rotationMax) {
+        sendeFehlerStatus(webserver, HTTP_CODE_BAD_REQUEST, "Drehung nur 0 bis 7");
         return;
     }
 
     auto newRotation = static_cast<uint8_t>(rotation);
     configManager.setLCDRotation(newRotation);
-    String currentIP = "unknown";
 
+    String currentIP = "unknown";
     if (wifiManager != nullptr) {
         currentIP = wifiManager->getIP().toString();
     }
-
     DisplayManager::setRotation(newRotation, currentIP);
     // Die Basis hat das Startbild gemalt -- die Kachelanzeige muss das erfahren, sonst
     // bleibt es stehen, bis sich zufaellig ein Wert aendert (A2).
     SlotDisplay::neuZeichnen();
 
     if (!configManager.save()) {
-        JsonDocument doc;
-        doc["status"] = "error";
-        doc["message"] = "Speichern fehlgeschlagen";
-
-        String json;
-        serializeJson(doc, json);
-
-        setCorsHeaders(webserver);
-        webserver->raw().send(HTTP_CODE_INTERNAL_ERROR, "application/json", json);
-
+        sendeFehlerStatus(webserver, HTTP_CODE_INTERNAL_ERROR, "Speichern fehlgeschlagen");
         return;
     }
 
     JsonDocument doc;
     doc["status"] = "ok";
     doc["rotation"] = newRotation;
-
-    String json;
-    serializeJson(doc, json);
-
-    setCorsHeaders(webserver);
-    webserver->raw().send(HTTP_CODE_OK, "application/json", json);
+    sendeJson(webserver, HTTP_CODE_OK, doc);
 
     Logger::info(("Display rotation updated to " + String(newRotation)).c_str(), "API");
 }
@@ -724,6 +395,7 @@ void handleOtaUpload(Webserver* webserver, int mode) {
     if (upload.status == UPLOAD_FILE_START && !requireBearerToken(webserver)) {
         otaError = true;
         otaStatus = "Nicht angemeldet";
+        otaZugangAbgelehnt = true;
         return;
     }
 
@@ -752,28 +424,30 @@ void handleOtaUpload(Webserver* webserver, int mode) {
  * @return void
  */
 void handleOtaFinished(Webserver* webserver) {
+    // Hat der Upload-Handler die Anfrage schon mit 401 beantwortet, ist hier Schluss --
+    // ohne zweite Antwort auf dieselbe Anfrage.
+    if (otaZugangAbgelehnt) {
+        otaZugangAbgelehnt = false;
+        otaInProgress = false;
+        return;
+    }
+    // Kam gar kein Upload an (POST ohne Datei), hat noch niemand geprueft.
     if (!requireBearerToken(webserver)) {
         return;
     }
 
-    JsonDocument doc;
     int constexpr rebootDelayMs = 5000;
 
-    doc["status"] = "Upload successful";
+    JsonDocument doc;
+    // "ok" oder "error" -- vorher stand hier ein englischer Satz ("Upload successful"),
+    // den die Oberflaeche nicht auswerten konnte; sie zeigt weiterhin nur message an (E9).
+    doc["status"] = otaError ? "error" : "ok";
     doc["message"] = otaStatus;
-
-    if (otaError) {
-        doc["status"] = "Error";
-    }
 
     otaInProgress = false;
     otaCancelRequested = false;
 
-    String json;
-    serializeJson(doc, json);
-
-    setCorsHeaders(webserver);
-    webserver->raw().send(HTTP_CODE_OK, "application/json", json);
+    sendeJson(webserver, HTTP_CODE_OK, doc);
 
     if (!otaError) {
         delay(rebootDelayMs);
@@ -781,17 +455,10 @@ void handleOtaFinished(Webserver* webserver) {
     }
 }
 
-
-
-
 /**
  * @brief Handle WiFi scan
  */
 void handleWifiScan(Webserver* webserver) {
-    if (!requireBearerToken(webserver)) {
-        return;
-    }
-
     JsonDocument doc;
     JsonArray networks = doc["networks"].to<JsonArray>();
 
@@ -799,10 +466,9 @@ void handleWifiScan(Webserver* webserver) {
         WiFiManager::scanNetworks(networks);
     }
 
+    // Die Seite erwartet das nackte Feld, nicht das Dokument darum herum.
     String out;
     serializeJson(doc["networks"], out);
-
-    setCorsHeaders(webserver);
     webserver->raw().send(HTTP_CODE_OK, "application/json", out);
 }
 
@@ -810,45 +476,15 @@ void handleWifiScan(Webserver* webserver) {
  * @brief Handle WiFi connect request
  */
 void handleWifiConnect(Webserver* webserver) {
-    if (!requireBearerToken(webserver)) {
+    JsonDocument ddoc;
+    if (!leseJsonKoerper(webserver, ddoc, true)) {
         return;
     }
 
-    String body = webserver->raw().arg("plain");
-    JsonDocument doc;
-    DeserializationError err = deserializeJson(doc, body);
-
-    if (err) {
-        JsonDocument resp;
-
-        resp["status"] = "error";
-        resp["message"] = "Anfrage ist kein gueltiges JSON";
-
-        String jsonOut;
-        serializeJson(resp, jsonOut);
-
-        setCorsHeaders(webserver);
-        webserver->raw().send(HTTP_CODE_BAD_REQUEST, "application/json", jsonOut);
-
-        return;
-    }
-
-    const char* ssid = doc["ssid"] | "";
-    const char* password = doc["password"] | "";
-
+    const char* ssid = ddoc["ssid"] | "";
+    const char* password = ddoc["password"] | "";
     if (strlen(ssid) == 0) {
-        JsonDocument resp;
-
-        resp["status"] = "error";
-        resp["message"] = "WLAN-Name fehlt";
-
-        String jsonOut;
-
-        serializeJson(resp, jsonOut);
-
-        setCorsHeaders(webserver);
-        webserver->raw().send(HTTP_CODE_BAD_REQUEST, "application/json", jsonOut);
-
+        sendeFehlerStatus(webserver, HTTP_CODE_BAD_REQUEST, "WLAN-Name fehlt");
         return;
     }
 
@@ -860,48 +496,29 @@ void handleWifiConnect(Webserver* webserver) {
     SlotDisplay::neuZeichnen();
 
     JsonDocument resp;
-
     resp["status"] = connectOk ? "connected" : "error";
     resp["ssid"] = ssid;
-
     if (connectOk) {
         resp["ip"] = wifiManager->getIP().toString();
         configManager.setWiFi(ssid, password);
         configManager.save();
-    }
-
-    if (!connectOk) {
+    } else {
         resp["message"] = "Verbindung fehlgeschlagen";
     }
-
-    String jsonOut;
-    serializeJson(resp, jsonOut);
-
-    setCorsHeaders(webserver);
-    webserver->raw().send(HTTP_CODE_OK, "application/json", jsonOut);
+    sendeJson(webserver, HTTP_CODE_OK, resp);
 }
 
 /**
  * @brief WiFi status
  */
 void handleWifiStatus(Webserver* webserver) {
-    if (!requireBearerToken(webserver)) {
-        return;
-    }
+    const bool connected = (wifiManager != nullptr) && WiFiManager::isConnected();
 
     JsonDocument resp;
-
-    bool connected = (wifiManager != nullptr) && WiFiManager::isConnected();
-
     resp["connected"] = connected;
     resp["ssid"] = connected ? WiFiManager::getConnectedSSID() : "";
     resp["ip"] = connected ? wifiManager->getIP().toString() : "";
-
-    String jsonOut;
-    serializeJson(resp, jsonOut);
-
-    setCorsHeaders(webserver);
-    webserver->raw().send(HTTP_CODE_OK, "application/json", jsonOut);
+    sendeJson(webserver, HTTP_CODE_OK, resp);
 }
 
 /**
@@ -1105,67 +722,35 @@ static void otaHandleAborted(HTTPUpload& /*upload*/, int mode) {
 
 /**
  * @brief Get recent logs
- * @param webserver Pointer to the Webserver instance
  */
 void handleLogsGet(Webserver* webserver) {
-    if (!requireBearerToken(webserver)) {
-        return;
-    }
-
     JsonDocument doc;
     JsonArray logsArray = doc["logs"].to<JsonArray>();
 
-    size_t count = Logger::getLogCount();
+    const size_t count = Logger::getLogCount();
     for (size_t i = 0; i < count; i++) {
         const char* entry = Logger::getLogEntry(i);
         if (entry != nullptr) {
             logsArray.add(entry);
         }
     }
-
     doc["count"] = count;
-
-    String json;
-    serializeJson(doc, json);
-
-    setCorsHeaders(webserver);
-    webserver->raw().send(HTTP_CODE_OK, "application/json", json);
+    sendeJson(webserver, HTTP_CODE_OK, doc);
 }
 
 /**
  * @brief Download logs as a text file
- * @param webserver Pointer to the Webserver instance
  */
 void handleLogsDownload(Webserver* webserver) {
-    if (!requireBearerToken(webserver)) {
-        return;
-    }
-
     String logs = Logger::getLogsAsString();
-
-    setCorsHeaders(webserver);
     webserver->raw().sendHeader("Content-Disposition", "attachment; filename=\"logs.log\"");
     webserver->raw().send(HTTP_CODE_OK, "text/plain", logs);
 }
 
 /**
  * @brief Clear log buffer
- * @param webserver Pointer to the Webserver instance
  */
 void handleLogsClear(Webserver* webserver) {
-    if (!requireBearerToken(webserver)) {
-        return;
-    }
-
     Logger::clearLogs();
-
-    JsonDocument doc;
-    doc["status"] = "ok";
-    doc["message"] = "Protokoll geleert";
-
-    String json;
-    serializeJson(doc, json);
-
-    setCorsHeaders(webserver);
-    webserver->raw().send(HTTP_CODE_OK, "application/json", json);
+    sendeStatus(webserver, HTTP_CODE_OK, "ok", "Protokoll geleert");
 }

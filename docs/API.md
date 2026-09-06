@@ -17,6 +17,14 @@ Das bleibt so: Die Basis umzubauen würde den Abstand zum Ursprungsprojekt unnö
 vergrößern. **Regel für neuen Code:** eigene Endpunkte nur `{ok, error}`. Wer Antworten der
 Basis auswertet, prüft `res.ok` bzw. den HTTP-Status, statt Felder zu raten.
 
+**Abschluss eines Updates** (`POST /api/v1/ota/fw` bzw. `/ota/fs`): `status` ist `ok` oder
+`error`, die Einzelheiten stehen in `message`. Der HTTP-Status ist auch bei einem abgelehnten
+Abbild 200 — die Ablehnung steht im Feld, nicht im Code.
+
+**Kein CORS.** Die Schnittstelle ist für die eigene Oberfläche auf demselben Gerät gedacht
+(same-origin). Freigaben für fremde Seiten gibt es nicht; `OPTIONS` wird wie jeder unbekannte
+Pfad mit 404 beantwortet.
+
 ## Werte und Seiten
 
 | Methode | Pfad | Zweck |

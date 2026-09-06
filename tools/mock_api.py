@@ -488,22 +488,22 @@ class Handler(BaseHTTPRequestHandler):
             if len(md5) != 32 and erwartet == ABBILD_FIRMWARE:
                 text = "Pruefsumme fehlt -- Update-Seite neu laden oder curl mit X-Abbild-MD5"
                 LOGS.append("[ota] abgelehnt: " + text)
-                return self._json(200, {"status": "Error", "message": text})
+                return self._json(200, {"status": "error", "message": text})
             erkannt = erkenne_abbild(daten[:16])
             if erkannt != erwartet:
                 text = abbild_fehlertext(erkannt, erwartet)
                 LOGS.append("[ota] abgelehnt: " + text)
-                # Antwortform wie handleOtaFinished(): HTTP 200 mit status "Error".
-                return self._json(200, {"status": "Error", "message": text})
+                # Antwortform wie handleOtaFinished(): HTTP 200 mit status "error".
+                return self._json(200, {"status": "error", "message": text})
             if len(md5) == 32:
                 ist = hashlib.md5(daten).hexdigest()
                 if ist != md5:
                     # Wortlaut des Updaters (Updater.cpp, getErrorString).
                     text = "MD5 Failed: expected:%s, calculated:%s" % (md5, ist)
                     LOGS.append("[ota] abgelehnt: " + text)
-                    return self._json(200, {"status": "Error", "message": text})
+                    return self._json(200, {"status": "error", "message": text})
             LOGS.append("[ota] Upload angenommen (Mock: nichts geschrieben)")
-            return self._json(200, {"status": "Upload successful",
+            return self._json(200, {"status": "ok",
                                     "message": "Mock: nichts geflasht, Datei verworfen"})
         return self._fehler(404, "unbekannter Endpunkt")
 

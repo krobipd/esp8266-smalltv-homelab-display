@@ -22,10 +22,14 @@
 
 #include "web/Webserver.h"
 
-void setCorsHeaders(Webserver* webserver);
 /// Prueft den Bearer-Token. Liefert false und beantwortet die Anfrage bereits,
 /// wenn der Zugang fehlt -- der Aufrufer kehrt dann sofort zurueck.
 auto requireBearerToken(Webserver* webserver) -> bool;
+/// Registriert eine Route, deren Handler nur bei gueltigem Passwort laeuft. Die
+/// Pruefung haengt damit an der Routentabelle statt an einer wiederholten Zeile in
+/// jedem Handler-Rumpf -- vergessen kann man sie so nicht mehr.
+void geschuetzt(Webserver* webserver, const char* uri, HTTPMethod methode,
+                void (*handler)(Webserver*));
 void registerApiEndpoints(Webserver* webserver);
 void handleOtaUpload(Webserver* webserver, int mode);
 void handleOtaFinished(Webserver* webserver);

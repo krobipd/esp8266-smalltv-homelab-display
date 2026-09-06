@@ -4,7 +4,7 @@
 
     python3 tools/abnahme.py <adresse> [--passwort P] [--messen] [--zeit] [--drehung]
                              [--werte] [--vorher DATEI] [--speichern DATEI]
-                             [--wlan] [--ota FIRMWARE.bin]
+                             [--wlan] [--ota FIRMWARE.bin] [--zugang]
 
 Ohne Schalter: nur Erreichbarkeit und Version. Jede Probe meldet OK oder FEHLER mit
 Zahlen; Exit 1, sobald eine Probe scheitert.
@@ -12,11 +12,14 @@ Zahlen; Exit 1, sobald eine Probe scheitert.
 Sicherheitsregeln (das Skript prueft die Version aus der Cache-Kennung und verweigert
 sonst):
   --wlan  erst ab Firmware v0.3.0 -- vorher bliebe das Geraet im AP-Modus haengen.
+  --zugang setzt fuer die Dauer der Probe ein zufaelliges Passwort und nimmt es
+          garantiert wieder zurueck (auch bei Abbruch). Ab Firmware v0.4.0.
   --ota   erst ab Firmware v0.3.2, und immer mit einem GUELTIGEN Abbild: Schluege die
           Pruefsummen-Kontrolle fehl, wuerde dieselbe Firmware erneut geflasht, kein Schaden.
 """
 import argparse
 import json
+import socket
 import re
 import sys
 import time
@@ -238,6 +241,72 @@ def probe_ota(g, version, datei):
     melde(v2 == version, "OTA: Version danach %s (vorher %s)" % (v2, version))
 
 
+def probe_zugang(g, version):
+    """Ein Upload OHNE gueltiges Passwort darf GENAU EINE Antwort ergeben (401).
+
+    Bei einem Upload laufen zwei Handler: der Upload-Handler prueft beim ersten Brocken,
+    der Abschluss-Handler lief frueher hinterher und antwortete ein zweites Mal auf
+    dieselbe Anfrage. Das faellt mit urllib nicht auf -- deshalb ein roher Socket, der
+    zaehlt, wie viele Statuszeilen zurueckkommen.
+
+    Das Geraet ist ab Werk offen; ohne gesetztes Passwort greift die Pruefung nicht.
+    Die Probe setzt deshalb selbst eines und nimmt es im finally wieder zurueck.
+    """
+    if version is None or version_tupel(version) < (0, 4, 0):
+        melde(False, "Zugangs-Probe verweigert: braucht Firmware v0.4.0 oder neuer (gefunden %s)" % version)
+        return
+    vorhandenes = bool(g.kopf.get("Authorization"))
+    zufall = "abnahme-" + uuid.uuid4().hex[:12]
+    if not vorhandenes:
+        _, _, antwort = g.sende("/api/v1/token/save", {"token": zufall})
+        if not isinstance(antwort, dict) or antwort.get("status") != "ok":
+            melde(False, "Zugang: Passwort liess sich nicht setzen (%r)" % (antwort,))
+            return
+    try:
+        grenze = "----abnahme" + uuid.uuid4().hex
+        koerper = (("--%s\r\nContent-Disposition: form-data; name=\"file\"; filename=\"x.bin\"\r\n"
+                    "Content-Type: application/octet-stream\r\n\r\n") % grenze).encode()
+        koerper += bytes([0xE9]) + b"\x00" * 4096
+        koerper += ("\r\n--%s--\r\n" % grenze).encode()
+        wirt = g.basis.split("//", 1)[1]
+        anfrage = (
+            "POST /api/v1/ota/fw HTTP/1.1\r\n"
+            "Host: %s\r\n"
+            "Authorization: Bearer falsch-%s\r\n"
+            "Content-Type: multipart/form-data; boundary=%s\r\n"
+            "Content-Length: %d\r\n"
+            "Connection: close\r\n\r\n" % (wirt, uuid.uuid4().hex[:8], grenze, len(koerper))
+        ).encode() + koerper
+        rohe = b""
+        s = socket.create_connection((wirt.split(":")[0], int(wirt.split(":")[1]) if ":" in wirt else 80), timeout=30)
+        try:
+            s.sendall(anfrage)
+            s.settimeout(15)
+            while True:
+                brocken = s.recv(4096)
+                if not brocken:
+                    break
+                rohe += brocken
+        except socket.timeout:
+            pass
+        finally:
+            s.close()
+        antworten = rohe.count(b"HTTP/1.")
+        erste = rohe.split(b"\r\n", 1)[0].decode("latin-1")
+        melde(antworten == 1 and " 401" in erste,
+              "Zugang: falsches Passwort -> %d Antwort(en), erste Zeile %r" % (antworten, erste))
+    finally:
+        if not vorhandenes:
+            g.kopf["Authorization"] = "Bearer " + zufall
+            try:
+                _, _, zurueck = g.sende("/api/v1/token/save", {"token": ""})
+                melde(isinstance(zurueck, dict) and zurueck.get("status") == "ok",
+                      "Zugang: Passwortschutz wieder aufgehoben")
+            except Exception as e:  # noqa: BLE001
+                melde(False, "Zugang: Passwort NICHT zurueckgenommen (%s) -- Passwort lautet %r" % (e, zufall))
+            del g.kopf["Authorization"]
+
+
 def main():
     p = argparse.ArgumentParser(description="Pruefungen nach einem Update, ueber die Schnittstelle.")
     p.add_argument("adresse", help="IP oder Hostname des Displays")
@@ -250,6 +319,8 @@ def main():
     p.add_argument("--speichern", metavar="DATEI", help="aktuellen Stand fuer spaeteren Vergleich sichern")
     p.add_argument("--wlan", action="store_true", help="Rueckkehr nach falscher SSID (ab v0.3.0)")
     p.add_argument("--ota", metavar="FIRMWARE.bin", help="Ablehnung bei falscher Pruefsumme (ab v0.3.2)")
+    p.add_argument("--zugang", action="store_true",
+                   help="Upload ohne Passwort ergibt genau eine Antwort (ab v0.4.0, setzt kurz ein Passwort)")
     a = p.parse_args()
 
     g = Geraet(a.adresse, a.passwort)
@@ -278,6 +349,8 @@ def main():
         probe_wlan(g, version)
     if a.ota:
         probe_ota(g, version, a.ota)
+    if a.zugang:
+        probe_zugang(g, version)
 
     print("\n%s" % ("alle Proben OK" if FEHLER == 0 else "%d Probe(n) FEHLGESCHLAGEN" % FEHLER))
     sys.exit(1 if FEHLER else 0)
