@@ -31,6 +31,12 @@ Die Oberfläche musste je Endpunkt wissen, welches kommt.
 des Dateisystems läuft die alte Oberfläche auf der neuen Firmware. Diese Felder
 verschwinden, sobald dieses Fenster Geschichte ist. **Neuer Code liest `ok` und `message`.**
 
+`GET /api/v1/geraet` liefert alles, was die Übersicht über das Gerät zeigt, in einem
+leichten Aufruf: `version`, `freeHeap`, `heapFrag`, `uptimeSec`, `verbunden`, `rssi`,
+`ssid`, `ip`, `zeitOk`, `zeitStatus`, `zeitzone`, `rotation`, `werte`/`maxWerte`,
+`seiten`/`maxSeiten`. Bewusst getrennt von `/api/v1/slots/status`: Der ruft die
+Datenquellen ab, dieser nicht.
+
 `POST /api/v1/slots/restore` nimmt eine komplette Sicherung entgegen (dasselbe Dokument,
 das `GET /api/v1/slots` liefert), prüft sie, übernimmt sie und schreibt **einmal**. Vorher
 lief eine Wiederherstellung über bis zu 25 Einzelaufrufe, von denen jeder schrieb — und

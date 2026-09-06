@@ -31,12 +31,18 @@
 #include "slots/SlotStore.h"
 #include "web/Api.h"
 #include "web/antwort.h"
+#include "config/ConfigManager.h"
+#include "ntp/NTPClient.h"
+#include "wireless/WiFiManager.h"
 
 // Fehlerformat-Regel: Unsere Slot-Endpunkte antworten {ok:false, error:"..."} plus
 // HTTP-Status; die Basis-Endpunkte (Token, NTP, ...) antworten {status:"error",
 // message:"..."}. Beides bleibt so -- die Basis umzubauen wuerde den Fork-Diff
 // vergroessern. Regel fuer neuen Code: eigene Endpunkte NUR {ok,error}; wer Antworten
 // der Basis auswertet, prueft res.ok/HTTP-Status statt Felder zu raten.
+extern ConfigManager configManager;
+extern NTPClient* ntpClient;
+
 namespace {
 Config* g_cfg = nullptr;
 
@@ -427,6 +433,54 @@ void handleSlotsRestore(Webserver* webserver) {
     sendeJson(webserver, HTTP_CODE_OK, antwort);
 }
 
+// Alles, was die Startseite ueber das Geraet zeigt, in EINEM leichten Aufruf: Version,
+// Speicher, Laufzeit, Netz, Uhrzeit, Belegung. Bewusst getrennt von /slots/status --
+// der ruft die Datenquellen ab, und die Startseite hat damit nichts zu schaffen.
+void handleGeraet(Webserver* webserver) {
+    JsonDocument doc;
+    setzeErgebnis(doc, true, "Geraetezustand");
+
+    doc["version"] = PROJECT_VER_STR;
+    doc["freeHeap"] = ESP.getFreeHeap();           // NOLINT(readability-static-accessed-through-instance)
+    doc["heapFrag"] = ESP.getHeapFragmentation();  // NOLINT(readability-static-accessed-through-instance)
+    doc["uptimeSec"] = millis() / 1000U;
+
+    const bool verbunden = WiFiManager::isConnected();
+    doc["verbunden"] = verbunden;
+    doc["rssi"] = WiFi.RSSI();
+    doc["ssid"] = verbunden ? WiFiManager::getConnectedSSID() : "";
+    doc["ip"] = WiFi.localIP().toString();
+
+    if (ntpClient != nullptr) {
+        doc["zeitOk"] = ntpClient->lastSyncOk();
+        doc["zeitStatus"] = ntpClient->lastStatus();
+    }
+    doc["zeitzone"] = NTPClient::zeitzone();
+    doc["rotation"] = configManager.getLCDRotationSafe();
+
+    uint8_t werte = 0;
+    uint8_t seitenMaske = 0;
+    if (g_cfg != nullptr) {
+        for (const auto& s : g_cfg->slots) {
+            if (s.url[0] == 0) continue;
+            werte++;
+            if (s.enabled && s.page >= 1 && s.page <= MAX_PAGES) {
+                seitenMaske = (uint8_t)(seitenMaske | (1U << (s.page - 1)));
+            }
+        }
+    }
+    uint8_t seiten = 0;
+    for (uint8_t i = 0; i < MAX_PAGES; i++) {
+        if ((seitenMaske & (1U << i)) != 0) seiten++;
+    }
+    doc["werte"] = werte;
+    doc["maxWerte"] = MAX_SLOTS;
+    doc["seiten"] = seiten;
+    doc["maxSeiten"] = MAX_PAGES;
+
+    sendeJson(webserver, HTTP_CODE_OK, doc);
+}
+
 void SlotApi::registerRoutes(Webserver* webserver) {
     geschuetzt(webserver, "/api/v1/slots", HTTP_GET, handleSlotsGet);
     geschuetzt(webserver, "/api/v1/slots", HTTP_POST, handleSlotsSave);
@@ -434,6 +488,7 @@ void SlotApi::registerRoutes(Webserver* webserver) {
     geschuetzt(webserver, "/api/v1/slots/status", HTTP_GET, handleSlotsStatus);
     geschuetzt(webserver, "/api/v1/slots/settings", HTTP_POST, handleSlotsSettings);
     geschuetzt(webserver, "/api/v1/slots/restore", HTTP_POST, handleSlotsRestore);
+    geschuetzt(webserver, "/api/v1/geraet", HTTP_GET, handleGeraet);
 
     // Loeschen adressiert den Slot ueber die URL (/api/v1/slots/<i>) mit einem
     // Platzhalter (UriBraces) -- EINE Route statt zwoelf einzeln registrierter

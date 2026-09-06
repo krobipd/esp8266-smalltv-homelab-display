@@ -38,13 +38,17 @@ unterstützt.
 
 ### Was das Gerät über sich sagt
 
-Unter der Übersicht auf der Werte-Seite steht ein Kasten **Gerät**: Adresse im Netz, WLAN
-samt Empfangsstärke, Firmware-Version, Laufzeit seit dem letzten Start, wann die Uhr zuletzt
-gestellt wurde, freier Speicher und wie viele Werte und Seiten belegt sind. Dort steht die
-Adresse, unter der das Gerät erreichbar ist — praktisch, wenn man sie weitergeben will und
-das Display gerade Kacheln zeigt.
+Auf der Startseite **Übersicht** steht ein Kasten **Gerät**, nach Themen gegliedert:
 
-Fehlt eine Angabe, fällt ihre Zeile weg. Die Werte frischen sich alle 30 Sekunden auf.
+| Netz | Adresse im Netz, WLAN-Name und Empfangsstärke |
+|---|---|
+| **Firmware** | laufende Version, Laufzeit seit dem letzten Start, freier Speicher |
+| **Uhrzeit** | wann die Uhr zuletzt gestellt wurde (in der Zeitzone des Geräts) und welche Zone gilt |
+| **Anzeige** | belegte Werte und Seiten, eingestellte Drehung |
+
+Dort steht die Adresse, unter der das Gerät erreichbar ist — praktisch, wenn man sie
+weitergeben will und das Display gerade Kacheln zeigt. Fehlt eine Angabe, fällt ihre Zeile
+weg. Der Kasten frischt sich alle 30 Sekunden auf und ruft dabei keine Datenquelle ab.
 
 ### Uhrzeit und Zeitzone
 

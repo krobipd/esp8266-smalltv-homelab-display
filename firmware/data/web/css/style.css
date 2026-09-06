@@ -51,7 +51,7 @@ body {
   background: var(--bg);
   color: var(--fg);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 15px;
+  font-size: 17px;
 }
 
 .container {
@@ -73,7 +73,7 @@ header {
 }
 
 h1 {
-  font-size: 15px;
+  font-size: 17px;
   margin: 0;
   letter-spacing: 0.1em;
 }
@@ -82,12 +82,12 @@ h1 small {
   font-weight: 400;
 }
 h2 {
-  font-size: 14px;
+  font-size: 16px;
   letter-spacing: 0.08em;
   margin: 18px 0 8px;
 }
 h3 {
-  font-size: 12px;
+  font-size: 14px;
   letter-spacing: 0.1em;
   color: var(--mut);
   margin: 14px 0 6px;
@@ -98,7 +98,7 @@ footer {
   padding-top: 10px;
   border-top: 1px solid var(--bd);
   color: var(--mut);
-  font-size: 11px;
+  font-size: 13px;
 }
 
 /* ---------- Navigation ---------- */
@@ -167,30 +167,41 @@ section.panel {
   min-width: 260px;
 }
 
-/* Der Geraetekasten unter der Uebersicht: zwei Paare je Zeile, auf schmalen Schirmen
-   (Handy) untereinander. Bewusst kein table -- die Paare sollen umbrechen duerfen. */
+/* Der Geraetekasten auf der Uebersicht: Angaben UNTEREINANDER, nach Themen gruppiert.
+   Zweispaltig war der erste Entwurf -- der Nutzer wollte es untereinander (06.09.2026). */
 .geraet {
   border: 1px solid var(--bd);
   border-radius: 6px;
-  padding: 10px 12px;
-  margin-top: 14px;
+  padding: 12px 14px;
+  margin-top: 18px;
 }
-.geraet h3 {
-  margin: 0 0 8px;
-  font-size: 0.95em;
+.geraet > h3 {
+  margin: 0 0 10px;
+  font-size: 1em;
+}
+.geraet-gruppe + .geraet-gruppe {
+  margin-top: 12px;
+}
+.geraet-gruppe h4 {
+  margin: 0 0 5px;
+  font-size: 0.9em;
+  font-weight: normal;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--mut);
 }
 .geraet dl {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
-  gap: 4px 18px;
   margin: 0;
 }
-.geraet div {
+.geraet dl > div {
   display: flex;
   justify-content: space-between;
-  gap: 10px;
+  gap: 12px;
+  padding: 3px 0;
   border-bottom: 1px dotted var(--bd);
-  padding: 2px 0;
+}
+.geraet dl > div:last-child {
+  border-bottom: none;
 }
 .geraet dt {
   color: var(--mut);
@@ -221,7 +232,7 @@ section.panel {
 button,
 .btn {
   font: inherit;
-  font-size: 12px;
+  font-size: 14px;
   letter-spacing: 0.05em;
   padding: 7px 14px;
   border: 1px solid var(--bd);
@@ -257,7 +268,7 @@ button.danger {
 label {
   display: block;
   color: var(--mut);
-  font-size: 11px;
+  font-size: 13px;
   margin: 10px 0 3px;
   letter-spacing: 0.05em;
 }
@@ -272,7 +283,7 @@ textarea {
   width: 100%;
   max-width: 340px;
   font: inherit;
-  font-size: 13px;
+  font-size: 15px;
   padding: 7px;
   background: var(--bg);
   border: 1px solid var(--bd);
@@ -313,7 +324,7 @@ progress {
   display: grid;
   grid-template-columns: max-content 1fr;
   gap: 6px 18px;
-  font-size: 13px;
+  font-size: 15px;
 }
 .kv b {
   color: var(--mut);
@@ -321,7 +332,7 @@ progress {
 }
 
 .badge {
-  font-size: 10px;
+  font-size: 13px;
   padding: 1px 7px;
   border-radius: 8px;
   border: 1px solid var(--bd);
@@ -340,7 +351,7 @@ progress {
   color: var(--mut);
 }
 .small {
-  font-size: 11px;
+  font-size: 13px;
 }
 .err {
   color: var(--err);
@@ -358,13 +369,13 @@ pre {
   word-break: break-word;
   max-height: 45vh;
   overflow: auto;
-  font-size: 11px;
+  font-size: 13px;
 }
 
 table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 13px;
+  font-size: 15px;
 }
 th,
 td {
@@ -375,7 +386,7 @@ td {
 th {
   color: var(--mut);
   font-weight: 400;
-  font-size: 11px;
+  font-size: 13px;
   letter-spacing: 0.05em;
 }
 
@@ -392,7 +403,7 @@ a {
 /* ---------- Umschalter Hell/Dunkel ---------- */
 .theme-switch-btn {
   font: inherit;
-  font-size: 13px;
+  font-size: 15px;
   line-height: 1;
   cursor: pointer;
   background: none;
@@ -418,7 +429,7 @@ a {
   overflow: hidden;
 }
 .preview .pv-label {
-  font-size: 13px;
+  font-size: 15px;
   color: #94a3b8;
   letter-spacing: 0.05em;
 }
@@ -446,7 +457,7 @@ a {
   transition: width 0.2s;
 }
 .preview .pv-unit {
-  font-size: 13px;
+  font-size: 15px;
   color: #64748b;
 }
 
@@ -481,7 +492,7 @@ a {
 .wifi-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 13px;
+  font-size: 15px;
 }
 .wifi-table th,
 .wifi-table td {
@@ -493,7 +504,7 @@ a {
 .wifi-table th {
   color: var(--mut);
   font-weight: 400;
-  font-size: 11px;
+  font-size: 13px;
   letter-spacing: 0.05em;
 }
 .ssid-cell {
@@ -562,6 +573,6 @@ a {
   border-radius: 6px;
   padding: 10px 14px;
   display: none;
-  font-size: 12px;
+  font-size: 14px;
   z-index: 50;
 }

@@ -386,6 +386,22 @@ class Handler(BaseHTTPRequestHandler):
         if p == "/api/v1/slots":
             # Wie handleSlotsGet(): die Konfiguration samt Grenzen (B8).
             return self._json(200, dict(CONFIG, limits=LIMITS))
+        if p == "/api/v1/geraet":
+            # Wie handleGeraet(): alles fuer den Kasten auf der Uebersicht in EINEM
+            # leichten Aufruf, ohne die Datenquellen anzufassen.
+            belegt = [s for s in CONFIG["slots"] if s["url"]]
+            seiten = {s["page"] for s in belegt if s["enabled"]}
+            return self._json(200, ergebnis(
+                True, "Geraetezustand",
+                version=_fw_version(), freeHeap=18400, heapFrag=7,
+                uptimeSec=int(time.time() - START_ZEIT),
+                verbunden=True, rssi=-58, ssid="MOCK-WLAN", ip="127.0.0.1",
+                zeitOk=True,
+                zeitStatus=time.strftime("Synchronisiert: %Y-%m-%d %H:%M:%S",
+                                         time.localtime(NTP_LETZTER_SYNC)),
+                zeitzone=ZEITZONE, rotation=ROTATION,
+                werte=len(belegt), maxWerte=MAX_SLOTS,
+                seiten=len(seiten), maxSeiten=MAX_PAGES))
         if p == "/api/v1/slots/status":
             # Antwortform wie handleSlotsStatus(): Werte plus Geraetezustand (E11).
             return self._json(200, {"slots": self._status(), "geraet": {

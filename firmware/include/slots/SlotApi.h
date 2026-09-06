@@ -52,5 +52,6 @@ void handleSlotsDelete(Webserver* webserver);
 void handleSlotsTest(Webserver* webserver);
 void handleSlotsStatus(Webserver* webserver);
 void handleSlotsSettings(Webserver* webserver);
+void handleGeraet(Webserver* webserver);
 
 #endif  // SLOT_API_H

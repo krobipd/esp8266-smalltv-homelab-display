@@ -8,6 +8,7 @@
     <script src="./js/alpinejs.min.js" defer></script>
     <script src="./js/utils.js"></script>
     <script src="./js/themeSwitcher.js"></script>
+    <script src="./js/geraetHandler.js"></script>
     <script src="./js/main.js"></script>
   </head>
   <body>
@@ -27,6 +28,24 @@
           Bildschirmdrehung, Updates samt Geräte-Neustart, freiwilliger Passwortschutz und
           das Protokoll.
         </p>
+
+        <div class="geraet" x-data="geraetHandler()" x-init="init()">
+          <h3>Gerät</h3>
+          <p class="err small" x-show="fehler" x-text="fehler"></p>
+          <template x-for="gruppe in gruppen" :key="gruppe.titel">
+            <div class="geraet-gruppe">
+              <h4 x-text="gruppe.titel"></h4>
+              <dl>
+                <template x-for="z in gruppe.zeilen" :key="z.name">
+                  <div>
+                    <dt x-text="z.name"></dt>
+                    <dd x-text="z.wert"></dd>
+                  </div>
+                </template>
+              </dl>
+            </div>
+          </template>
+        </div>
       </section>
 
       <footer id="footer-placeholder"></footer>
