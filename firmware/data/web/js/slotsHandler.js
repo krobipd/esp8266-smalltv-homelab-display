@@ -82,6 +82,9 @@ function slotsHandler() {
     config: null,
     status: [],
     geraet: null,
+    netz: null,   // {connected, ssid, ip} aus /api/v1/wifi/status
+    zeit: null,   // {lastOk, lastStatus, lastSyncTime} aus /api/v1/ntp/status
+    zone: "",     // Zeitzonen-Regel aus /api/v1/ntp/config
     // Vom Gerät geliefert (GET /slots, Feld "limits"). Der Rückfall gilt nur, solange
     // die Konfiguration noch nicht geladen ist oder eine ältere Firmware antwortet.
     // Die drei Schriftgrößen unterscheiden sich nur im Namen. Als Daten statt als drei
@@ -113,7 +116,13 @@ function slotsHandler() {
     async init() {
       await this.configLaden();
       await this.statusLaden();
+      await this.umgebungLaden();
       this.laden = false;
+      // Netz, Uhrzeit und Zone ändern sich selten — halbminütlich reicht, und der
+      // Statusabruf alle fünf Sekunden bleibt davon unberührt.
+      setInterval(() => {
+        if (!document.hidden) this.umgebungLaden();
+      }, 30000);
       // Werte regelmaessig nachziehen, solange kein Formular offen ist. Nicht im
       // Hintergrund-Tab (unnoetige Dauerlast auf dem Geraet) und nie ueberholend
       // (bei einem langsamen Abruf wuerden sich Anfragen sonst stapeln).
@@ -162,27 +171,95 @@ function slotsHandler() {
     },
 
     _statusLaeuft: false,
-    // Zustand des Geräts in einer Zeile. Die Zahlen kamen früher alle zehn Sekunden ins
-    // Protokoll und verdrängten dort alles andere; hier stehen sie, wo man sie sucht.
-    geraetZeile() {
+    // Adresse, WLAN, Uhrzeit und Zone gehören nicht zum Werte-Status und werden
+    // deshalb getrennt geholt: zwei leichte Abrufe, die keine Datenquelle anfassen.
+    async umgebungLaden() {
+      try {
+        const r = await apiFetch("/api/v1/wifi/status");
+        if (r.ok) this.netz = await r.json();
+      } catch (e) {
+        /* bleibt leer -- der Kasten zeigt die Zeile dann nicht */
+      }
+      try {
+        const r = await apiFetch("/api/v1/ntp/status");
+        if (r.ok) this.zeit = await r.json();
+      } catch (e) {
+        /* wie oben */
+      }
+      if (!this.zone) {
+        try {
+          const r = await apiFetch("/api/v1/ntp/config");
+          if (r.ok) this.zone = (await r.json()).zeitzone || "";
+        } catch (e) {
+          /* wie oben */
+        }
+      }
+    },
+
+    // Laufzeit in Worten: Minuten, Stunden, Tage — je nachdem, was gerade aussagt.
+    dauerText(sekunden) {
+      const s = Number(sekunden) || 0;
+      if (s < 3600) return Math.floor(s / 60) + " min";
+      if (s < 86400) {
+        return Math.floor(s / 3600) + " h " + Math.floor((s % 3600) / 60) + " min";
+      }
+      const tage = Math.floor(s / 86400);
+      return tage + (tage === 1 ? " Tag " : " Tagen ") + Math.floor((s % 86400) / 3600) + " h";
+    },
+
+    // Das Kürzel der Zeitzone aus der POSIX-Regel: "CET-1CEST,…" → "MEZ/MESZ".
+    zonenName() {
+      const regel = String(this.zone || "");
+      if (!regel) return "";
+      const namen = { CET: "MEZ", CEST: "MESZ", GMT: "GMT", BST: "BST", UTC: "UTC" };
+      const teile = regel.match(/^([A-Za-z]+)[^A-Za-z]*([A-Za-z]+)?/);
+      if (!teile) return regel;
+      const eins = namen[teile[1]] || teile[1];
+      const zwei = teile[2] ? namen[teile[2]] || teile[2] : "";
+      return zwei && zwei !== eins ? eins + "/" + zwei : eins;
+    },
+
+    // Zustand des Geräts als Paare für den Kasten unter der Übersicht. Was das Gerät
+    // (noch) nicht sagt, bleibt weg — lieber eine Zeile weniger als „unbekannt".
+    get geraetInfo() {
+      const zeilen = [];
       const g = this.geraet;
-      if (!g) return "";
       const kb = (n) => (Number(n) / 1024).toFixed(1).replace(".", ",") + " KB";
-      const s = Number(g.uptimeSec) || 0;
-      const dauer =
-        s < 3600
-          ? Math.floor(s / 60) + " min"
-          : s < 86400
-            ? Math.floor(s / 3600) + " h " + Math.floor((s % 3600) / 60) + " min"
-            : Math.floor(s / 86400) +
-              (Math.floor(s / 86400) === 1 ? " Tag " : " Tagen ") +
-              Math.floor((s % 86400) / 3600) + " h";
-      return (
-        "Speicher frei " + kb(g.freeHeap) +
-        " · Fragmentierung " + (Number(g.heapFrag) || 0) + " %" +
-        " · läuft seit " + dauer +
-        " · WLAN " + (Number(g.rssi) || 0) + " dBm"
-      );
+
+      if (this.netz && this.netz.ip) zeilen.push({ name: "Adresse", wert: this.netz.ip });
+      if (this.netz && this.netz.ssid) {
+        const dbm = g && g.rssi ? `, ${g.rssi} dBm` : "";
+        zeilen.push({ name: "WLAN", wert: this.netz.ssid + dbm });
+      }
+      if (g && g.version) zeilen.push({ name: "Firmware", wert: g.version });
+      if (g && g.uptimeSec !== undefined) {
+        zeilen.push({ name: "Läuft seit", wert: this.dauerText(g.uptimeSec) });
+      }
+      if (this.zeit && this.zeit.lastSyncTime) {
+        const d = new Date(Number(this.zeit.lastSyncTime) * 1000);
+        const uhr = d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+        const zone = this.zonenName();
+        zeilen.push({
+          name: "Uhr gestellt",
+          wert: uhr + (zone ? ` (${zone})` : "") + (this.zeit.lastOk ? "" : " — fehlgeschlagen"),
+        });
+      }
+      if (g && g.freeHeap !== undefined) {
+        const frag = Number(g.heapFrag) || 0;
+        zeilen.push({ name: "Speicher frei", wert: `${kb(g.freeHeap)} (${frag} % fragmentiert)` });
+      }
+      if (this.config && Array.isArray(this.config.slots)) {
+        const belegt = this.config.slots.filter((s) => s && s.url).length;
+        zeilen.push({ name: "Werte", wert: `${belegt} von ${this.limits.slots}` });
+        const seiten = new Set(
+          this.config.slots.filter((s) => s && s.url && s.enabled).map((s) => s.page),
+        );
+        zeilen.push({
+          name: "Seiten belegt",
+          wert: `${seiten.size} von ${this.limits.pages}`,
+        });
+      }
+      return zeilen;
     },
 
     async statusLaden() {

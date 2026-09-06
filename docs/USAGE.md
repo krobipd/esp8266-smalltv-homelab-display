@@ -36,6 +36,16 @@ die gefundenen Felder.
 Feldnamen eintragen (bei der ioBroker-rest-api: `val`). Verschachtelte Felder werden nicht
 unterstützt.
 
+### Was das Gerät über sich sagt
+
+Unter der Übersicht auf der Werte-Seite steht ein Kasten **Gerät**: Adresse im Netz, WLAN
+samt Empfangsstärke, Firmware-Version, Laufzeit seit dem letzten Start, wann die Uhr zuletzt
+gestellt wurde, freier Speicher und wie viele Werte und Seiten belegt sind. Dort steht die
+Adresse, unter der das Gerät erreichbar ist — praktisch, wenn man sie weitergeben will und
+das Display gerade Kacheln zeigt.
+
+Fehlt eine Angabe, fällt ihre Zeile weg. Die Werte frischen sich alle 30 Sekunden auf.
+
 ### Uhrzeit und Zeitzone
 
 Auf der Seite **Uhrzeit** stehen Zeitserver und Zeitzone. Die Zeitzone ist eine

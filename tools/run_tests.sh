@@ -106,8 +106,8 @@ node "$BASIS/tests/web/test_slots_assistent.mjs"
 node "$BASIS/tests/web/test_anmeldung_hinweis.mjs"
 # Eingabepruefung wie am Geraet: Bytes statt Zeichen, nur darstellbare Zeichen (N6).
 node "$BASIS/tests/web/test_slots_eingabe.mjs"
-# Zustandszeile des Geraets auf der Werte-Seite (E11).
-node "$BASIS/tests/web/test_geraetzeile.mjs"
+# Der Geraetekasten auf der Werte-Seite: Adresse, WLAN, Firmware, Uhrzeit, Speicher (E11).
+node "$BASIS/tests/web/test_geraetekasten.mjs"
 
 # Erkennung der Abbild-Art auf der Update-Seite -- gegen die echten Abbilder
 # aus dist/, weil ein Fehlgriff hier den falschen Flash-Bereich beschreibt.

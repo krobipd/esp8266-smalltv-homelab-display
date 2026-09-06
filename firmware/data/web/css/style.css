@@ -167,6 +167,40 @@ section.panel {
   min-width: 260px;
 }
 
+/* Der Geraetekasten unter der Uebersicht: zwei Paare je Zeile, auf schmalen Schirmen
+   (Handy) untereinander. Bewusst kein table -- die Paare sollen umbrechen duerfen. */
+.geraet {
+  border: 1px solid var(--bd);
+  border-radius: 6px;
+  padding: 10px 12px;
+  margin-top: 14px;
+}
+.geraet h3 {
+  margin: 0 0 8px;
+  font-size: 0.95em;
+}
+.geraet dl {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 4px 18px;
+  margin: 0;
+}
+.geraet div {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  border-bottom: 1px dotted var(--bd);
+  padding: 2px 0;
+}
+.geraet dt {
+  color: var(--mut);
+}
+.geraet dd {
+  margin: 0;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
 .list {
   border: 1px solid var(--bd);
   border-radius: 6px;
