@@ -226,7 +226,8 @@ void handleReboot(Webserver* webserver) {
     int constexpr rebootDelayMs = 1000;
 
     JsonDocument doc;
-    doc["status"] = "rebooting";
+    setzeErgebnis(doc, true, "Neustart in einer Sekunde");
+    doc["status"] = "rebooting";  // Zwischenstand, den die Seiten unterscheiden
     sendeJson(webserver, HTTP_CODE_OK, doc);
 
     delay(rebootDelayMs);
@@ -248,7 +249,8 @@ void handleNtpSync(Webserver* webserver) {
     ntpClient->syncAnstossen();
 
     JsonDocument doc;
-    doc["status"] = "gestartet";
+    setzeErgebnis(doc, true, "Abgleich angestossen");
+    doc["status"] = "gestartet";  // Zwischenstand: das Ergebnis steht in /ntp/status
     doc["lastStatus"] = ntpClient->lastStatus();
     doc["lastSyncTime"] = ntpClient->lastSyncTime();
     sendeJson(webserver, HTTP_CODE_OK, doc);
@@ -330,7 +332,7 @@ void handleNtpConfigSet(Webserver* webserver) {
     }
 
     JsonDocument doc;
-    doc["status"] = "ok";
+    setzeErgebnis(doc, true, "Zeiteinstellungen gespeichert");
     doc["ntp_server"] = server;
     doc["zeitzone"] = NTPClient::zeitzone();
     sendeJson(webserver, HTTP_CODE_OK, doc);
@@ -379,7 +381,7 @@ void handleDisplayRotationSet(Webserver* webserver) {
     }
 
     JsonDocument doc;
-    doc["status"] = "ok";
+    setzeErgebnis(doc, true, "Drehung uebernommen");
     doc["rotation"] = newRotation;
     sendeJson(webserver, HTTP_CODE_OK, doc);
 
@@ -492,8 +494,7 @@ void handleOtaFinished(Webserver* webserver) {
     const bool fehler = OtaAblauf::fehler();
 
     JsonDocument doc;
-    doc["status"] = fehler ? "error" : "ok";
-    doc["message"] = OtaAblauf::meldung();
+    setzeErgebnis(doc, !fehler, OtaAblauf::meldung().c_str());
     OtaAblauf::abmelden();
     sendeJson(webserver, HTTP_CODE_OK, doc);
 
@@ -542,14 +543,13 @@ void handleWifiConnect(Webserver* webserver) {
     }
 
     JsonDocument resp;
-    resp["status"] = connectOk ? "connected" : "error";
+    setzeErgebnis(resp, connectOk, connectOk ? "Verbunden" : "Verbindung fehlgeschlagen");
+    resp["status"] = connectOk ? "connected" : "error";  // Wortlaut, den die WLAN-Seite prueft
     resp["ssid"] = ssid;
     if (connectOk) {
         resp["ip"] = wifiManager->getIP().toString();
         configManager.setWiFi(ssid, password);
         configManager.save();
-    } else {
-        resp["message"] = "Verbindung fehlgeschlagen";
     }
     sendeJson(webserver, HTTP_CODE_OK, resp);
 }

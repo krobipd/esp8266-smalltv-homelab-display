@@ -99,4 +99,33 @@ const { antwort: aDel, daten: dDel } = await ruf("/api/v1/slots/0", null, "DELET
 pruefe(dDel.ok === true && typeof dDel.message === "string", "Loeschen ohne Ergebnisfelder");
 pruefe(ergebnisVon(aDel, dDel).ok, "Loeschen wird als Fehler gelesen");
 
-console.log(`Antwortformat: ${11 + faelle.length * 4 + 2}x OK`);
+// --- 3) Gegenprobe gegen die FIRMWARE-Quellen ---
+// Der Mock kann hier richtig liegen und das Geraet trotzdem falsch: Genau das war in
+// v0.5.1 der Fall -- /ntp/config antwortete ohne ok und message, weil der Handler sein
+// Dokument von Hand baute. Deshalb wird hier geprueft, dass KEIN Handler mehr
+// doc["status"] setzt, ohne setzeErgebnis() aufzurufen.
+const quellen = [
+  "firmware/src/web/Api.cpp",
+  "firmware/src/slots/SlotApi.cpp",
+  "firmware/src/boot/RescueMode.cpp",
+];
+for (const datei of quellen) {
+  const text = readFileSync(join(basis, datei), "utf8");
+  // Jede Antwort wird ueber sendeJson/sendeStatus/sendeFehler* verschickt oder von Hand
+  // serialisiert. Von Hand gesetzte status-Felder sind nur als ZUSATZ erlaubt -- direkt
+  // nach einem setzeErgebnis() in derselben Funktion.
+  const zeilen = text.split("\n");
+  let letztesErgebnis = -100;
+  zeilen.forEach((zeile, i) => {
+    if (/setzeErgebnis\(/.test(zeile)) letztesErgebnis = i;
+    const m = zeile.match(/^\s*(?:doc|resp|antwort)\["status"\] = /);
+    if (m) {
+      pruefe(
+        i - letztesErgebnis <= 3,
+        `${datei}:${i + 1} setzt status ohne setzeErgebnis() davor: ${zeile.trim()}`,
+      );
+    }
+  });
+}
+
+console.log(`Antwortformat: ${11 + faelle.length * 4 + 2}x OK (Mock und Firmware-Quellen)`);

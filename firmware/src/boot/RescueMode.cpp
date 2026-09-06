@@ -26,6 +26,7 @@
 #include "boot/RescueMode.h"
 #include "abbild_art.h"
 #include "web/OtaAblauf.h"
+#include "web/antwort.h"
 #include "project_version.h"
 #include "config/ConfigManager.h"
 #include "hardware/Pins.h"
@@ -292,6 +293,7 @@ auto RescueMode::drawDebugScreen() -> void {
 static void handleRescueStatus() {
     JsonDocument doc;
 
+    setzeErgebnis(doc, true, "Rettungsmodus aktiv");
     doc["status"] = "rescue";
     doc["firmware"] = PROJECT_VER_STR;
     doc["free_heap"] = ESP.getFreeHeap();                    // NOLINT(readability-static-accessed-through-instance)
@@ -330,8 +332,7 @@ static void handleRescueTokenReset() {
     if (!rescueWebserver->raw().hasArg("plain") || rescueWebserver->raw().arg("plain").length() == 0) {
         JsonDocument doc;
 
-        doc["status"] = "error";
-        doc["message"] = "Missing JSON body";
+        setzeErgebnis(doc, false, "Missing JSON body");
 
         String json;
         serializeJson(doc, json);
@@ -348,8 +349,7 @@ static void handleRescueTokenReset() {
     if (err) {
         JsonDocument doc;
 
-        doc["status"] = "error";
-        doc["message"] = "Invalid JSON";
+        setzeErgebnis(doc, false, "Invalid JSON");
 
         String json;
         serializeJson(doc, json);
@@ -364,8 +364,7 @@ static void handleRescueTokenReset() {
     if (!ddoc["token"].is<const char*>()) {
         JsonDocument doc;
 
-        doc["status"] = "error";
-        doc["message"] = "Passwort-Feld fehlt";
+        setzeErgebnis(doc, false, "Passwort-Feld fehlt");
 
         String json;
         serializeJson(doc, json);
@@ -381,8 +380,7 @@ static void handleRescueTokenReset() {
     configManager.save();
 
     JsonDocument doc;
-    doc["status"] = "ok";
-    doc["message"] = schutzAus ? "Passwortschutz aufgehoben" : "Passwort gesetzt";
+    setzeErgebnis(doc, true, schutzAus ? "Passwortschutz aufgehoben" : "Passwort gesetzt");
 
     String json;
     serializeJson(doc, json);
@@ -398,8 +396,7 @@ static void handleRescueTokenReset() {
 static void handleRescueReboot() {
     JsonDocument doc;
 
-    doc["status"] = "ok";
-    doc["message"] = "Rebooting...";
+    setzeErgebnis(doc, true, "Rebooting...");
 
     String json;
     serializeJson(doc, json);
@@ -457,8 +454,8 @@ static void handleRescueOtaFinished() {
     const bool fehler = OtaAblauf::fehler();
 
     JsonDocument doc;
-    doc["status"] = fehler ? "error" : "ok";
-    doc["message"] = fehler ? OtaAblauf::meldung() : String("Update OK, Neustart ...");
+    setzeErgebnis(doc, !fehler,
+                  fehler ? OtaAblauf::meldung().c_str() : "Update OK, Neustart ...");
     OtaAblauf::abmelden();
 
     String json;
@@ -491,8 +488,7 @@ static void handleRescueReset() {
     configManager.secure.put("rescue_persistent_crash_count", "0");
     configManager.secure.put("rescue_last_boot_clean", "1");
 
-    doc["status"] = "ok";
-    doc["message"] = "Rescue counters reset";
+    setzeErgebnis(doc, true, "Rescue counters reset");
 
     String json;
     serializeJson(doc, json);
