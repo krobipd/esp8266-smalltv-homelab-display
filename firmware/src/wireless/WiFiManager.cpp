@@ -223,13 +223,21 @@ auto WiFiManager::loop() -> void {
         _rueckwegSeitMs = millis();
         _rueckwegZuletztMs = _rueckwegSeitMs;
         _rueckwegLaeuft = true;
-        Logger::info("AP-Modus: versuche das Heimnetz", "WiFiManager");
+        // Nur den ERSTEN Versuch protokollieren: Das Protokoll fasst 20 Zeilen, und ein
+        // Geraet im AP-Modus versucht es jede Minute -- nach zwanzig Minuten stuende
+        // nichts anderes mehr drin, am allerwenigsten der Grund fuer den AP-Modus.
+        if (!_rueckwegGemeldet) {
+            _rueckwegGemeldet = true;
+            Logger::info("AP-Modus: versuche das Heimnetz (weitere Versuche jede Minute)",
+                         "WiFiManager");
+        }
         return;
     }
     if (WiFi.status() == WL_CONNECTED) {
         WiFi.mode(WIFI_STA);
         _apMode = false;
         _rueckwegLaeuft = false;
+        _rueckwegGemeldet = false;  // ein naechster AP-Modus soll sich wieder melden
         Logger::info(String("Heimnetz wieder da: " + WiFi.localIP().toString()).c_str(), "WiFiManager");
         return;
     }

@@ -18,6 +18,14 @@ Das bleibt so: Die Basis umzubauen würde den Abstand zum Ursprungsprojekt unnö
 vergrößern. **Regel für neuen Code:** eigene Endpunkte nur `{ok, error}`. Wer Antworten der
 Basis auswertet, prüft `res.ok` bzw. den HTTP-Status, statt Felder zu raten.
 
+`GET /api/v1/slots/status` liefert neben `slots[]` ein Objekt `geraet` mit dem Zustand des
+Geräts: `freeHeap` (Bytes), `heapFrag` (Prozent), `uptimeSec`, `rssi` (dBm).
+
+`POST /api/v1/ntp/sync` **stößt den Abgleich nur an** und antwortet sofort mit
+`{"status": "gestartet"}`; das Ergebnis steht kurz darauf in `GET /api/v1/ntp/status`
+(`lastOk`, `lastStatus`, `lastSyncTime`). Bis v0.3.2 wartete der Aufruf bis zu fünf
+Sekunden und meldete das Ergebnis selbst — in dieser Zeit stand das Gerät still.
+
 **Abschluss eines Updates** (`POST /api/v1/ota/fw` bzw. `/ota/fs`): `status` ist `ok` oder
 `error`, die Einzelheiten stehen in `message`. Der HTTP-Status ist auch bei einem abgelehnten
 Abbild 200 — die Ablehnung steht im Feld, nicht im Code.

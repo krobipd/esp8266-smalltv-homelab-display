@@ -265,6 +265,9 @@ def probe_zugang(g, version):
     vorhandenes = bool(g.kopf.get("Authorization"))
     zufall = "abnahme-" + uuid.uuid4().hex[:12]
     if not vorhandenes:
+        # VOR dem Setzen ausgeben: Bricht der Lauf zwischen Setzen und Zuruecknehmen ab,
+        # steht das Passwort wenigstens hier -- sonst hilft nur der Rettungsmodus.
+        print("        (Probe setzt kurzzeitig das Passwort %r)" % zufall)
         _, _, antwort = g.sende("/api/v1/token/save", {"token": zufall})
         if not isinstance(antwort, dict) or antwort.get("status") != "ok":
             melde(False, "Zugang: Passwort liess sich nicht setzen (%r)" % (antwort,))

@@ -383,11 +383,18 @@ void handleOtaUpload(Webserver* webserver, int mode) {
 
     // requireBearerToken sendet die 401-Antwort selbst -- der frueher hier von Hand
     // nachgebaute JSON-Block war eine driftanfaellige Kopie davon.
-    if (upload.status == UPLOAD_FILE_START && !requireBearerToken(webserver)) {
-        otaError = true;
-        otaStatus = "Nicht angemeldet";
-        otaZugangAbgelehnt = true;
-        return;
+    if (upload.status == UPLOAD_FILE_START) {
+        // Bei JEDEM Upload zuruecksetzen. Bliebe der Merker von einem abgewiesenen
+        // Versuch stehen (der Client kann nach der 401 einfach auflegen, dann laeuft
+        // der Abschluss-Handler nie), schwiege der naechste ERFOLGREICHE Upload:
+        // Abbild geschrieben, keine Antwort, kein Neustart -- die Update-Seite haenge.
+        otaZugangAbgelehnt = false;
+        if (!requireBearerToken(webserver)) {
+            otaError = true;
+            otaStatus = "Nicht angemeldet";
+            otaZugangAbgelehnt = true;
+            return;
+        }
     }
 
     switch (upload.status) {

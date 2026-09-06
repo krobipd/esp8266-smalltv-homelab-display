@@ -54,6 +54,7 @@ class WiFiManager {
     bool _apMode = false;
     unsigned long _rueckwegSeitMs = 0;     // Start des laufenden Rueckweg-Versuchs
     unsigned long _rueckwegZuletztMs = 0;  // Start des letzten Versuchs (Abstand)
+    bool _rueckwegGemeldet = false;        // nur der erste Versuch kommt ins Protokoll
     bool _rueckwegLaeuft = false;
     unsigned long _apNachlaufSeitMs = 0;   // 0 = kein Abschalten des AP geplant
 };
