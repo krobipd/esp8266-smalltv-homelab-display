@@ -92,7 +92,6 @@ auto SlotApi::konfigurationSichern() -> bool {
     return true;
 }
 
-// @openapi {get} /slots version=v1 group=Slots summary="Read slot configuration" requiresAuth=true
 void handleSlotsGet(Webserver* webserver) {
     if (g_cfg == nullptr) {
         sendeFehler(webserver, HTTP_CODE_INTERNAL_ERROR, "Konfiguration nicht geladen");
@@ -109,7 +108,6 @@ void handleSlotsGet(Webserver* webserver) {
     sendeJson(webserver, HTTP_CODE_OK, doc);
 }
 
-// @openapi {post} /slots version=v1 group=Slots summary="Create or update one slot" requiresAuth=true
 void handleSlotsSave(Webserver* webserver) {
     if (g_cfg == nullptr) {
         sendeFehler(webserver, HTTP_CODE_INTERNAL_ERROR, "Konfiguration nicht geladen");
@@ -163,7 +161,6 @@ void handleSlotsSave(Webserver* webserver) {
     sendeJson(webserver, HTTP_CODE_OK, antwort);
 }
 
-// @openapi {delete} /slots/{index} version=v1 group=Slots summary="Delete one slot" requiresAuth=true
 void handleSlotsDelete(Webserver* webserver) {
     if (!requireBearerToken(webserver)) {
         return;
@@ -205,7 +202,6 @@ void handleSlotsDelete(Webserver* webserver) {
     sendeJson(webserver, HTTP_CODE_OK, doc);
 }
 
-// @openapi {post} /slots/test version=v1 group=Slots summary="Fetch a URL from the device" requiresAuth=true
 void handleSlotsTest(Webserver* webserver) {
     if (!webserver->raw().hasArg("plain")) {
         sendeFehler(webserver, HTTP_CODE_BAD_REQUEST, "leere Anfrage");
@@ -261,7 +257,6 @@ void handleSlotsTest(Webserver* webserver) {
     sendeJson(webserver, HTTP_CODE_OK, doc);
 }
 
-// @openapi {get} /slots/status version=v1 group=Slots summary="Read current slot values" requiresAuth=true
 void handleSlotsStatus(Webserver* webserver) {
     if (g_cfg == nullptr) {
         sendeFehler(webserver, HTTP_CODE_INTERNAL_ERROR, "Konfiguration nicht geladen");
@@ -314,7 +309,6 @@ void handleSlotsStatus(Webserver* webserver) {
     sendeJson(webserver, HTTP_CODE_OK, doc);
 }
 
-// @openapi {post} /slots/settings version=v1 group=Slots summary="Update page settings" requiresAuth=true
 void handleSlotsSettings(Webserver* webserver) {
     if (g_cfg == nullptr) {
         sendeFehler(webserver, HTTP_CODE_INTERNAL_ERROR, "Konfiguration nicht geladen");

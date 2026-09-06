@@ -1,6 +1,5 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later
- * Oberflaeche in der Handschrift des Fan-Controllers (Projekt A):
- * dunkel, Monospace, schmale Rahmen, Farbvariablen fuer Hell/Dunkel.
+ * Dunkel, Monospace, schmale Rahmen, Farbvariablen fuer Hell und Dunkel.
  * Ersetzt die frueher eingebundene CSS-Bibliothek vollstaendig -- deshalb muessen
  * hier auch die Grundelemente (button, input, table ...) mitdefiniert sein. */
 

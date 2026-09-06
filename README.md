@@ -64,6 +64,9 @@ antwortet, ist eine Quelle:
   Formular ein.
 - **Alles andere**, sofern ein Endpunkt existiert, der einen einzelnen Wert ausgibt.
 
+Die **Zeitzone ist fest auf Mitteleuropa** eingestellt (MEZ/MESZ, Sommerzeit automatisch);
+der Nachtmodus rechnet damit. Ein Zeitserver lässt sich frei wählen, die Zone nicht.
+
 > **Kein HTTPS.** Auf diesem Chip bleibt für TLS kein Speicher übrig — bewusste, nicht
 > verhandelbare Entscheidung. Das Gerät gehört ins eigene Netz, nicht ins Internet.
 
@@ -74,7 +77,7 @@ antwortet, ist eine Quelle:
 | **[docs/HARDWARE.md](docs/HARDWARE.md)** | Gerät, Chip, Speicheraufteilung, harte Grenzen |
 | **[docs/BUILD.md](docs/BUILD.md)** | Bauen, Testkette, Paket schnüren, OTA-Flash |
 | **[docs/USAGE.md](docs/USAGE.md)** | Erstinbetriebnahme, Werte einrichten, Seiten, Schwellen, Sicherung |
-| **[docs/API.md](docs/API.md)** | HTTP-/JSON-Schnittstelle (vollständig in `firmware/swagger.yml`) |
+| **[docs/API.md](docs/API.md)** | HTTP-/JSON-Schnittstelle, vollständig |
 
 ## 🚀 Schnellstart
 
@@ -96,6 +99,8 @@ antwortet, ist eine Quelle:
 |---|---|
 | `firmware/src`, `firmware/include` | Firmware. Die gesamte Logik liegt in Headern (`config_codec.h`, `smalltv_util.h`, `value_extract.h`, `http_cache.h`, `abbild_art.h`) — deshalb ist sie ohne Gerät prüfbar; die `.cpp`-Schale liest und schreibt nur. |
 | `firmware/data/web` | Web-Oberfläche (statisch, Alpine.js, kein Build-Schritt) |
+| `firmware/include/hardware/Pins.h` | alles, was an dieser Platine hängt: Anschlüsse, Displaymaß, Notfall-WLAN |
+| **[firmware/UPSTREAM.md](firmware/UPSTREAM.md)** | Herkunft: was aus der Ursprungs-Firmware stammt, was hinzukam, was entfiel |
 | `tests/host` | Host-Unittests der Logik — laufen ohne Gerät, nur mit `c++` |
 | `tests/web` | Verhaltenstests der Oberfläche: Sendepfad, Abbild-Erkennung, Cache-Kopfzeilen, Sichern/Wiederherstellen, Ablehnung falscher Abbilder |
 | `tools/mock_api.py` | **Ersetzt das ganze Gerät** — alle Seiten, alle Endpunkte, Antwortformate 1:1. Oberfläche entwickeln ohne Hardware. |

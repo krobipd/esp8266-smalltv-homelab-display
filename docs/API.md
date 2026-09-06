@@ -1,8 +1,9 @@
 # HTTP-Schnittstelle
 
 Alles, was die Weboberfläche kann, geht über diese Endpunkte — sie ist nur ein Client wie
-jeder andere. Vollständig maschinenlesbar: **`firmware/swagger.yml`** (OpenAPI 3), erzeugt
-aus den `@openapi`-Anmerkungen im Quelltext (`firmware/scripts/generate_openapi.py`).
+jeder andere. **Dieses Dokument ist die maßgebliche Beschreibung.** Die OpenAPI-Datei des
+Ursprungsprojekts ist entfallen: Sie wurde aus Quelltext-Kommentaren erzeugt, die niemand
+gepflegt hat.
 
 Basis: `http://<geräte-ip>/`. Nur HTTP. Antworten sind JSON.
 
