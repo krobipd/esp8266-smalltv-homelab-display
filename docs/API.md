@@ -46,12 +46,17 @@ verschiedene Befunde.
 
 `GET /api/v1/dateien` (seit v0.5.6) beantwortet die Frage, was tatsächlich auf dem
 Dateisystem liegt: `dateien[]` (Name und Größe je Datei im Wurzelverzeichnis), `ordner[]`
-(Name, Anzahl und Summe je Unterordner — `/web` einzeln aufzuführen wäre auf diesem Chip
-verschwendeter Speicher), dazu `anzahl`, `summe`, `fsGesamt`, `fsBelegt`, `blockGroesse`
-und `ueberhang`. Der `ueberhang` ist `fsBelegt - summe`: Liegt der belegte Platz deutlich
-über der Summe aller Dateien, steckt im Flash ein Block, den das Dateisystem nicht mehr
-zuordnet. Da jede Datei auf ganze Blöcke aufgerundet wird, ist ein kleiner Überhang normal
-— die Bewertung bleibt beim Menschen, das Gerät liefert die Zahlen.
+(Name, Anzahl und Summe je Unterordner, **rekursiv über alle Ebenen** — `/web` einzeln
+aufzuführen wäre auf diesem Chip verschwendeter Speicher), dazu `anzahl`, `summe`,
+`summeBloecke`, `fsGesamt`, `fsBelegt`, `blockGroesse` und `ueberhang`.
+
+`summe` sind die rohen Bytes, `summeBloecke` dieselben Dateien auf ganze Blöcke
+aufgerundet — so belegt LittleFS sie wirklich. Der `ueberhang` ist
+`fsBelegt − summeBloecke`, also **das, was die Aufrundung nicht erklärt**: im Wesentlichen
+die Metadatenpaare der Ordner. Gegen die rohen Bytes gerechnet bestünde er zu über 200 KB
+aus bloßer Aufrundung und sähe nach verwaisten Daten aus, wo keine sind (v0.5.7 korrigiert
+genau das). Auffällig wird der Wert erst, wenn er über die Zeit **wächst** — die Bewertung
+bleibt beim Menschen, das Gerät liefert die Zahlen.
 
 `POST /api/v1/slots/restore` nimmt eine komplette Sicherung entgegen (dasselbe Dokument,
 das `GET /api/v1/slots` liefert), prüft sie, übernimmt sie und schreibt **einmal**. Vorher

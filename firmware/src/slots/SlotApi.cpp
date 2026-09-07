@@ -624,15 +624,40 @@ void handleGeraet(Webserver* webserver) {
     sendeJson(webserver, HTTP_CODE_OK, doc);
 }
 
-/// Summiert einen Ordner: Anzahl und Bytes. Eine Ebene tief, mehr gibt es nicht.
-static void ordnerSumme(const char* pfad, uint16_t& anzahl, uint32_t& bytes) {
-    Dir d = LittleFS.openDir(pfad);
+/// Rundet eine Dateigroesse auf ganze Bloecke auf -- so belegt LittleFS sie wirklich.
+static auto aufBloecke(uint32_t groesse, uint32_t block) -> uint32_t {
+    if (block == 0) {
+        return groesse;
+    }
+    return ((groesse + block - 1) / block) * block;
+}
+
+/// Summiert einen Ordner samt Unterordnern: Anzahl und Bytes.
+///
+/// Die erste Fassung ueberSPRANG Unterordner, statt hineinzugehen -- und damit fehlten
+/// /web/css und /web/js, also der groesste Teil der Oberflaeche. Der daraus gerechnete
+/// "ueberhang" meldete am echten Geraet 334 KB verwaiste Daten, die es nicht gab.
+/// Eine Diagnose, die systematisch zu wenig zaehlt, erzeugt genau den Fehlalarm, gegen
+/// den sie gebaut wurde.
+static void ordnerSumme(const String& pfad, uint16_t& anzahl, uint32_t& bytes,
+                       uint32_t& bytesGerundet, uint32_t block, uint8_t tiefe) {
+    // Deckel gegen unbegrenzte Rekursion auf einem Stapel von wenigen Kilobyte. Die
+    // Oberflaeche liegt zwei Ebenen tief; vier ist reichlich Luft.
+    const uint8_t TIEFE_MAX = 4;
+    if (tiefe > TIEFE_MAX) {
+        return;
+    }
+    Dir d = LittleFS.openDir(pfad.c_str());
     while (d.next()) {
         if (d.isDirectory()) {
+            ordnerSumme(pfad + "/" + d.fileName(), anzahl, bytes, bytesGerundet, block,
+                        static_cast<uint8_t>(tiefe + 1));
             continue;
         }
         anzahl++;
-        bytes += static_cast<uint32_t>(d.fileSize());
+        const auto groesse = static_cast<uint32_t>(d.fileSize());
+        bytes += groesse;
+        bytesGerundet += aufBloecke(groesse, block);
     }
 }
 
@@ -647,11 +672,20 @@ void handleDateien(Webserver* webserver) {
     setzeErgebnis(doc, true, "Dateien");
 
     uint32_t summeAlle = 0;
+    uint32_t summeBloecke = 0;
     uint16_t anzahlAlle = 0;
 
+    // Die Blockgroesse zuerst: Ohne sie laesst sich nicht sagen, wie viel vom belegten
+    // Platz blosse Aufrundung ist -- und ohne diese Trennung ertraenkt die Rundung
+    // jedes echte Signal. Genau darauf bin ich am 07.09.2026 selbst hereingefallen.
+    FSInfo fsInfo;
+    const bool fsOk = LittleFS.info(fsInfo);
+    const uint32_t block = fsOk ? static_cast<uint32_t>(fsInfo.blockSize) : 0U;
+
     // Wurzelverzeichnis einzeln -- dort liegen die Konfigurationsdateien, und genau
-    // deren Vorhandensein ist die Frage. Ordner nur als Summe: /web hat rund dreissig
-    // Dateien, die einzeln aufzufuehren waere auf diesem Chip verschwendeter Heap.
+    // deren Vorhandensein ist die Frage. Ordner nur als Summe, aber REKURSIV ueber alle
+    // Unterordner: /web hat 27 Dateien in drei Ebenen, die einzeln aufzufuehren waere
+    // auf diesem Chip verschwendeter Heap -- sie wegzulassen macht die Summe falsch.
     JsonArray dateien = doc["dateien"].to<JsonArray>();
     JsonArray ordner = doc["ordner"].to<JsonArray>();
     Dir wurzel = LittleFS.openDir("/");
@@ -660,7 +694,9 @@ void handleDateien(Webserver* webserver) {
         if (wurzel.isDirectory()) {
             uint16_t anzahl = 0;
             uint32_t bytes = 0;
-            ordnerSumme(("/" + name).c_str(), anzahl, bytes);
+            uint32_t gerundet = 0;
+            ordnerSumme("/" + name, anzahl, bytes, gerundet, block, 1);
+            summeBloecke += gerundet;
             JsonObject o = ordner.add<JsonObject>();
             o["name"] = name;
             o["anzahl"] = anzahl;
@@ -673,26 +709,28 @@ void handleDateien(Webserver* webserver) {
         o["name"] = name;
         o["groesse"] = static_cast<uint32_t>(wurzel.fileSize());
         summeAlle += static_cast<uint32_t>(wurzel.fileSize());
+        summeBloecke += aufBloecke(static_cast<uint32_t>(wurzel.fileSize()), block);
         anzahlAlle++;
     }
 
     doc["anzahl"] = anzahlAlle;
     doc["summe"] = summeAlle;
+    doc["summeBloecke"] = summeBloecke;
 
-    FSInfo fsInfo;
-    if (LittleFS.info(fsInfo)) {
+    if (fsOk) {
         doc["fsGesamt"] = fsInfo.totalBytes;
         doc["fsBelegt"] = fsInfo.usedBytes;
-        // Der eigentliche Befund: Liegt "belegt" deutlich ueber der Summe der Dateien,
-        // steckt im Flash ein Block, den das Dateisystem nicht mehr zuordnet -- also
-        // Daten, die noch da sind, aber nicht mehr gefunden werden. LittleFS rundet je
-        // Datei auf ganze Bloecke auf, deshalb ist ein Ueberhang normal; auffaellig
-        // wird er erst deutlich oberhalb dieser Rundung. Die Bewertung bleibt beim
-        // Menschen, das Geraet liefert nur die Zahlen.
-        doc["ueberhang"] = fsInfo.usedBytes > summeAlle
-                               ? static_cast<uint32_t>(fsInfo.usedBytes - summeAlle)
-                               : 0U;
         doc["blockGroesse"] = fsInfo.blockSize;
+        // Der eigentliche Befund -- und zwar gegen die GERUNDETE Summe, nicht gegen die
+        // rohe: LittleFS belegt je Datei ganze Bloecke, das allein macht hier gut
+        // 200 KB aus. Wer dagegen die rohen Bytes vergleicht, sieht immer einen riesigen
+        // Ueberhang und haelt Rundung fuer verwaiste Daten. Was danach noch uebrig
+        // bleibt, sind vor allem die Metadatenpaare der Ordner; auffaellig wird es
+        // erst, wenn der Rest ueber die Zeit WAECHST. Die Bewertung bleibt beim
+        // Menschen, das Geraet liefert die Zahlen.
+        doc["ueberhang"] = fsInfo.usedBytes > summeBloecke
+                               ? static_cast<uint32_t>(fsInfo.usedBytes - summeBloecke)
+                               : 0U;
     }
 
     sendeJson(webserver, HTTP_CODE_OK, doc);

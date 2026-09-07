@@ -89,9 +89,13 @@ def main():
     for eintrag in mockD["ordner"]:
         pruefe(set(eintrag) == {"name", "anzahl", "groesse"},
                "Ordnereintrag hat die falsche Form: " + json.dumps(eintrag))
-    # Die Rechnung muss aufgehen, sonst ist der Ueberhang wertlos.
-    pruefe(mockD["ueberhang"] == max(0, mockD["fsBelegt"] - mockD["summe"]),
-           "Der Ueberhang passt nicht zu belegt minus Summe")
+    # Die Rechnung muss aufgehen, und zwar gegen die GERUNDETE Summe: Gegen die rohen
+    # Bytes gerechnet bestand der Ueberhang zu ueber 200 KB aus blosser Blockaufrundung
+    # und meldete am echten Geraet verwaiste Daten, die es nicht gab.
+    pruefe(mockD["summeBloecke"] >= mockD["summe"],
+           "Die gerundete Summe kann nicht kleiner sein als die rohe")
+    pruefe(mockD["ueberhang"] == max(0, mockD["fsBelegt"] - mockD["summeBloecke"]),
+           "Der Ueberhang passt nicht zu belegt minus gerundeter Summe")
 
     print("Geraet-Paritaet: %dx OK (%d + %d Felder, %d Dateien — aus der Firmware gelesen)"
           % (len(oben) + len(obenD) + len(dateien), len(oben), len(obenD), len(dateien)))
