@@ -9,6 +9,7 @@ import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import vm from "node:vm";
+import { neuesteFassung } from "./neueste_fassung.mjs";
 
 const basis = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const quelle = readFileSync(join(basis, "firmware/data/web/js/otaUploadHandler.js"), "utf8");
@@ -31,10 +32,8 @@ const pruefe = (bedingung, text) => {
 };
 
 // Neuestes dist-Verzeichnis nehmen -- der Test soll nicht an einer Version kleben.
-const distWurzel = join(basis, "dist");
-const versionen = readdirSync(distWurzel).filter((d) => d.startsWith("v")).sort();
-pruefe(versionen.length > 0, "kein dist/v*-Verzeichnis gefunden");
-const dist = join(distWurzel, versionen[versionen.length - 1]);
+const fassung = neuesteFassung(basis);
+const dist = fassung.pfad;
 
 const abbilder = readdirSync(dist).filter((f) => f.endsWith(".bin"));
 const firmware = abbilder.find((f) => f.includes("firmware"));
@@ -76,4 +75,4 @@ let n = 0;
   n++;
 }
 
-console.log(`Update-Erkennung: ${n}x OK (gegen ${versionen[versionen.length - 1]})`);
+console.log(`Update-Erkennung: ${n}x OK (gegen ${fassung.name})`);

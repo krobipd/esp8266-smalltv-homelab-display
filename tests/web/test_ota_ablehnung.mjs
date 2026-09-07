@@ -11,6 +11,7 @@ import { createHash } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { neuesteFassung } from "./neueste_fassung.mjs";
 
 const BASIS = "http://127.0.0.1:8099";
 const wurzel = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -23,9 +24,8 @@ const pruefe = (bedingung, text) => {
   }
 };
 
-const distWurzel = join(wurzel, "dist");
-const version = readdirSync(distWurzel).filter((d) => d.startsWith("v")).sort().pop();
-const dist = join(distWurzel, version);
+const fassung = neuesteFassung(wurzel);
+const dist = fassung.pfad;
 const datei = (teil) => {
   const name = readdirSync(dist).find((f) => f.endsWith(".bin") && f.includes(teil));
   // Der Kopf genuegt: die Erkennung sieht ohnehin nur die ersten 16 Bytes.
@@ -90,4 +90,4 @@ const dateisystem = datei("littlefs");
 }
 
 if (fehler > 0) process.exit(1);
-console.log(`Abbild-Ablehnung: 8x OK (gegen ${version})`);
+console.log(`Abbild-Ablehnung: 8x OK (gegen ${fassung.name})`);
