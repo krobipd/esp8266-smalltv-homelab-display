@@ -9,6 +9,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import vm from "node:vm";
+import { neuesteFassung } from "./neueste_fassung.mjs";
 
 const basis = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const quelle = readFileSync(join(basis, "firmware/data/web/js/md5.js"), "utf8");
@@ -36,11 +37,10 @@ for (const n of [55, 56, 63, 64, 65, 119, 120, 1000]) {
   pruefe(md5(b) === createHash("md5").update(b).digest("hex"), `${n} Byte`);
 }
 // Die echten Abbilder der neuesten Version.
-const distWurzel = join(basis, "dist");
-const version = readdirSync(distWurzel).filter((d) => d.startsWith("v")).sort().pop();
-const dist = join(distWurzel, version);
+const fassung = neuesteFassung(basis);
+const dist = fassung.pfad;
 for (const f of readdirSync(dist).filter((f) => f.endsWith(".bin"))) {
   const b = readFileSync(join(dist, f));
   pruefe(md5(b) === createHash("md5").update(b).digest("hex"), f);
 }
-console.log(`MD5: Testvektoren, Blockgrenzen und Abbilder ${version} OK`);
+console.log(`MD5: Testvektoren, Blockgrenzen und Abbilder ${fassung.name} OK`);
