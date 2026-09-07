@@ -137,14 +137,28 @@ void setup() {
 
     registerApiEndpoints(webserver);
 
+    // VOR dem Laden festhalten, ob ueberhaupt eine Datei da ist: Danach hat load()
+    // moeglicherweise schon umbenannt, und die Verlusterkennung weiter unten braucht
+    // den Zustand von vorher.
+    const bool garNichtsDa =
+        !LittleFS.exists("/slots.json") && !LittleFS.exists("/slots.bak.json");
+
+    bool ausSicherungGeladen = false;
     {
         char slotFehler[96] = {0};
-        if (!SlotStore::load(g_slotConfig, slotFehler, sizeof(slotFehler))) {
+        if (!SlotStore::load(g_slotConfig, slotFehler, sizeof(slotFehler),
+                             &ausSicherungGeladen)) {
             Logger::error(slotFehler, "Slots");
             // Die beschaedigte Datei NICHT ueberschreiben, sondern beiseitelegen --
             // wer mag, kann sie sich per Update-Zugang noch ansehen. Ohne das Umbenennen
             // wuerde der erste Speichervorgang sie endgueltig vernichten.
-            SlotStore::beiseitelegen();
+            if (!SlotStore::beiseitelegen()) {
+                // Scheitert schon das Umbenennen, ist das Dateisystem selbst verdaechtig.
+                // Der naechste Speichervorgang wuerde die kaputte Datei ersetzen, ohne
+                // dass sie jemand gesehen hat -- das gehoert ins Protokoll.
+                Logger::error("Beschaedigte Konfiguration liess sich nicht beiseitelegen",
+                              "Slots");
+            }
             // Im RAM gelten ab jetzt die Standardwerte. Die genullte Config waere
             // Helligkeit 0 -- ein schwarzes Display, das wie gebrickt aussieht,
             // obwohl nur eine Datei kaputt ist.
@@ -155,6 +169,53 @@ void setup() {
         }
     }
     SlotApi::begin(&g_slotConfig);
+    // Die Zweitschrift ist eingesprungen -- das ist KEIN Normalzustand und darf nicht
+    // stillschweigend passieren. Am 07.09.2026 fehlte die Hauptdatei nach 18 Stunden
+    // ohne Strom, und das Geraet sah aus wie fabrikneu: Genau diese Verwechslung soll
+    // die Meldung ausschliessen.
+    if (ausSicherungGeladen) {
+        SlotApi::setLadeWarnung(
+            "Die Hauptdatei der Einrichtung fehlte; die Werte stammen aus der "
+            "Zweitschrift. Bitte einmal pruefen und speichern.");
+    }
+    // Fehlt die Zweitschrift, wird sie angelegt -- ohne dass jemand etwas speichern
+    // muss. Sonst waere der Schutz nach einem Firmware-Update genau so lange nicht
+    // vorhanden, bis der Nutzer zufaellig eine Einstellung aendert, also womoeglich
+    // wochenlang. Geschrieben wird sie erst Sekunden spaeter aus der Schleife.
+    if (!LittleFS.exists("/slots.bak.json")) {
+        SlotApi::sicherungAnfordern();
+        // Und dabei gleich die Hauptdatei mit erneuern, wenn es sie gibt. Genau diese
+        // Lage besteht beim ersten Start nach einem Dateisystem-Update: Die Hauptdatei
+        // wurde unmittelbar hinter zwei Megabyte Flash-Programmierung geschrieben, eine
+        // Zweitschrift gibt es noch nicht. Der zweite Schreibvorgang faellt in den
+        // Leerlauf und trifft damit eine voellig andere Situation als der erste.
+        if (LittleFS.exists("/slots.json")) {
+            SlotApi::hauptdateiErneuern();
+        }
+    }
+
+    // Den Marker auch dann setzen, wenn gar nicht gespeichert wird: Ein Geraet, das
+    // eingerichtet ist und einfach nur laeuft, bekaeme ihn sonst nie -- und genau so
+    // eines war es am 07.09.2026. Bedingung ist echter Inhalt, nicht bloss eine
+    // vorhandene Datei: Standardwerte sind keine Einrichtung, und ein fabrikneues
+    // Geraet darf sich spaeter nicht selbst einen Verlust melden.
+    // Kostet nur beim allerersten Mal eine Schreibung (Leerlauf-Riegel in
+    // SecureStorage::put); ob ueberhaupt etwas eingerichtet ist, entscheidet
+    // merkeEingerichtet() selbst.
+    SlotApi::merkeEingerichtet();
+
+    // Verlusterkennung: Weder Haupt- noch Zweitschrift da, aber auf diesem Geraet war
+    // schon einmal etwas eingerichtet. Am 07.09.2026 war das der Zustand -- und er sah
+    // von einem fabrikneuen Geraet nicht zu unterscheiden aus. Der Marker liegt im
+    // EEPROM, also im anderen Flash-Sektor, und ueberlebt damit ein Dateisystem, das
+    // selbst der Verursacher ist.
+    if (garNichtsDa && SlotApi::warSchonEingerichtet()) {
+        Logger::error("Eingerichtete Konfiguration ist verschwunden", "Slots");
+        SlotApi::setLadeWarnung(
+            "Auf diesem Geraet war schon einmal etwas eingerichtet, es ist aber nichts "
+            "mehr vorhanden. Die Einrichtung ist offenbar verlorengegangen -- bitte aus "
+            "einer Sicherung wiederherstellen.");
+    }
     SlotRuntime::begin(&g_slotConfig);
     SlotDisplay::begin(&g_slotConfig);
     SlotApi::registerRoutes(webserver);
@@ -221,6 +282,9 @@ void loop() {
             SlotRuntime::update();
         }
         SlotDisplay::update();
+        // Zweitschrift der Einrichtung, absichtlich Sekunden NACH der Hauptschreibung.
+        // Kostet im Normalfall einen Zahlenvergleich; der Abstand ist der ganze Zweck.
+        SlotApi::sicherungPruefen();
     }
 
 

@@ -31,6 +31,54 @@ namespace {
 const char* CONFIG_PATH = "/slots.json";
 /// Ablage einer unlesbaren Konfiguration (siehe beiseitelegen()).
 const char* DEFEKT_PATH = "/slots.json.defekt";
+/// Zweitschrift, zeitversetzt geschrieben (siehe SlotStore::sicherungSchreiben).
+const char* SICHERUNG_PATH = "/slots.bak.json";
+
+/// Liest eine Konfigurationsdatei. Getrennt von load(), weil dieselbe Prozedur fuer
+/// die Hauptdatei UND die Zweitschrift gilt -- zwei Kopien wuerden auseinanderlaufen.
+/// nichtDa unterscheidet "Datei fehlt" (kein Fehler) von "Datei kaputt" (Fehler).
+auto dateiLesen(const char* pfad, Config& out, char* errOut, size_t errSize,
+                bool& nichtDa) -> bool {
+    nichtDa = false;
+    if (!LittleFS.exists(pfad)) {
+        nichtDa = true;
+        return false;
+    }
+
+    File f = LittleFS.open(pfad, "r");
+    if (!f) {
+        setErr(errOut, errSize, "Konfiguration nicht lesbar");
+        return false;
+    }
+    if (f.size() == 0) {
+        f.close();
+        setErr(errOut, errSize, "Konfigurationsdatei ist leer");
+        return false;
+    }
+    // Obergrenze mit Sicherheitsabstand: Eine volle Konfiguration mit zwoelf Slots und
+    // maximal langen Adressen bleibt unter 5 KB. Der Deckel liegt weit darueber und
+    // schuetzt nur davor, dass eine unsinnig grosse Datei beim Start den Heap zerlegt.
+    // Er darf NIE so knapp sitzen, dass eine selbst geschriebene Datei daran scheitert --
+    // genau das war der Datenverlust-Fehler.
+    const size_t GROESSE_MAX = 16384;
+    if (f.size() > GROESSE_MAX) {
+        f.close();
+        setErr(errOut, errSize, "Konfigurationsdatei ist unplausibel gross");
+        return false;
+    }
+
+    // Direkt aus der Datei lesen, statt sie erst komplett in den Heap zu holen.
+    JsonDocument doc;
+    const DeserializationError e = deserializeJson(doc, f);
+    f.close();
+    if (e) {
+        setErr(errOut, errSize, "Konfiguration ist kein gueltiges JSON");
+        return false;
+    }
+
+    configFromDoc(doc, out);
+    return true;
+}
 
 // Die STD_*-Auslieferungswerte liegen in config_codec.h -- EINE Autoritaet fuer
 // defaults() hier und fuer fehlende Felder in configFromDoc().
@@ -69,57 +117,70 @@ void SlotStore::defaults(Config& out) {
     }
 }
 
-auto SlotStore::load(Config& out, char* errOut, size_t errSize) -> bool {
-    if (!LittleFS.exists(CONFIG_PATH)) {
-        defaults(out);
-        Logger::info("SlotStore: keine Konfiguration vorhanden, Standardwerte werden verwendet");
+auto SlotStore::load(Config& out, char* errOut, size_t errSize, bool* ausSicherung) -> bool {
+    if (ausSicherung != nullptr) {
+        *ausSicherung = false;
+    }
+
+    bool nichtDa = false;
+    if (dateiLesen(CONFIG_PATH, out, errOut, errSize, nichtDa)) {
         return true;
     }
-
-    File f = LittleFS.open(CONFIG_PATH, "r");
-    if (!f) {
-        setErr(errOut, errSize, "Konfiguration nicht lesbar");
-        return false;
-    }
-
-    if (f.size() == 0) {
-        f.close();
-        setErr(errOut, errSize, "Konfigurationsdatei ist leer");
-        return false;
-    }
-
-    // Obergrenze mit Sicherheitsabstand: Eine volle Konfiguration mit zwoelf Slots und
-    // maximal langen Adressen bleibt unter 5 KB. Der Deckel liegt weit darueber und
-    // schuetzt nur davor, dass eine unsinnig grosse Datei beim Start den Heap zerlegt.
-    // Er darf NIE so knapp sitzen, dass eine selbst geschriebene Datei daran scheitert --
-    // genau das war der Datenverlust-Fehler.
-    const size_t GROESSE_MAX = 16384;
-    if (f.size() > GROESSE_MAX) {
-        f.close();
-        setErr(errOut, errSize, "Konfigurationsdatei ist unplausibel gross");
-        return false;
-    }
-
-    // Direkt aus der Datei lesen, statt sie erst komplett in den Heap zu holen.
+    // Beschaedigte Hauptdatei: Bevor Standardwerte gelten, wird die Zweitschrift
+    // versucht -- sie ist fuer genau diesen Fall da. Die kaputte Hauptdatei wird
+    // dabei beiseitegelegt, nicht ueberschrieben; wer mag, kann sie sich ansehen.
     //
-    // Hier lag ein Datenverlust-Fehler: Das Schreiben kannte keine Grenze, das Lesen
-    // lehnte aber alles ab einer festen Puffergroesse ab. Eine Konfiguration mit neun
-    // normalen Adressen liess sich speichern und war nach dem naechsten Neustart
-    // unlesbar -- und der erste Speichervorgang danach haette sie endgueltig geloescht.
-    // Jetzt gibt es keine kuenstliche Schwelle mehr: Was geschrieben werden konnte,
-    // kann auch gelesen werden.
-    JsonDocument doc;
-    const DeserializationError e = deserializeJson(doc, f);
-    f.close();
-
-    if (e) {
-        setErr(errOut, errSize, "Konfiguration ist kein gueltiges JSON");
+    // Ohne diesen Zweig entstuende ein Datenverlust: Es gaeben Standardwerte, der
+    // Nutzer speicherte irgendetwas, und die Zweitschrift wuerde kurz darauf mit
+    // diesem leeren Stand ueberschrieben -- die echten Werte laegen dann nur noch in
+    // einer Datei, die niemand liest.
+    if (!nichtDa) {
+        char sicherungFehler[96] = {0};
+        bool sicherungFehlt = false;
+        if (dateiLesen(SICHERUNG_PATH, out, sicherungFehler, sizeof(sicherungFehler),
+                       sicherungFehlt)) {
+            Logger::warn("Hauptdatei beschaedigt -- Konfiguration kommt aus der Zweitschrift",
+                         "Slots");
+            beiseitelegen();
+            if (ausSicherung != nullptr) {
+                *ausSicherung = true;
+            }
+            return true;
+        }
+        // Auch die Zweitschrift traegt nichts: Der Aufrufer bekommt den urspruenglichen
+        // Fehler und legt die Hauptdatei beiseite.
         return false;
     }
 
-    // Bewusst NICHT auf Standardwerte zurueckfallen: Eine beschaedigte Datei
-    // still zu ueberschreiben wuerde die Konfiguration des Nutzers vernichten.
-    configFromDoc(doc, out);
+    // Ab hier: Die Hauptdatei FEHLT. Genau dieser Fall trat am 07.09.2026 auf, nachdem
+    // das Geraet 18 Stunden ohne Strom war -- und wurde von niemandem bemerkt, weil er
+    // sich von einem fabrikneuen Geraet nicht unterscheiden liess.
+    char sicherungFehler[96] = {0};
+    bool sicherungNichtDa = false;
+    if (dateiLesen(SICHERUNG_PATH, out, sicherungFehler, sizeof(sicherungFehler),
+                   sicherungNichtDa)) {
+        Logger::warn("Hauptdatei fehlt -- Konfiguration kommt aus der Zweitschrift", "Slots");
+        if (ausSicherung != nullptr) {
+            *ausSicherung = true;
+        }
+        return true;
+    }
+    if (!sicherungNichtDa) {
+        Logger::error(sicherungFehler, "Slots");
+    }
+
+    defaults(out);
+    Logger::info("SlotStore: keine Konfiguration vorhanden, Standardwerte werden verwendet");
+    return true;
+}
+
+auto SlotStore::sicherungSchreiben(const Config& cfg) -> bool {
+    JsonDocument doc;
+    configToDoc(cfg, doc);
+    if (!jsonAtomarSchreiben(SICHERUNG_PATH, doc)) {
+        Logger::error("Zweitschrift konnte nicht geschrieben werden", "Slots");
+        return false;
+    }
     return true;
 }
 

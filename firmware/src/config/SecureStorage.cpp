@@ -18,6 +18,7 @@
  */
 
 #include <array>
+#include <cstring>
 #include <EEPROM.h>
 #include <Logger.h>
 #include <ESP8266WiFi.h>
@@ -75,20 +76,62 @@ auto SecureStorage::begin() -> bool {
     EEPROM.begin(static_cast<int>(_eepromSize));
 
     if (!loadToMemory()) {
-        Logger::warn("No existing NVS data found, initializing new storage", "SecureStorage");
         _doc.clear();
 
-        if (!flushToEEPROM()) {
-            Logger::error("Failed to initialize NVS in EEPROM", "SecureStorage");
-            _ready = false;
+        // HIER lag ein Datenverlust: Frueher wurde bei JEDEM Lesefehler der Sektor mit
+        // {} ueberschrieben -- ein einziger Parse- oder Laengenfehler vernichtete die
+        // WLAN-Zugangsdaten unwiederbringlich, obwohl sie vielleicht noch dastanden.
+        // Das ist das genaue Gegenteil dessen, was SlotStore bewusst tut (beiseitelegen
+        // statt ueberschreiben). Geschrieben wird jetzt nur noch, wenn der Sektor
+        // wirklich leer ist; sonst bleibt er unberuehrt und der naechste Start darf es
+        // erneut versuchen.
+        if (sektorLeer()) {
+            Logger::warn("No existing NVS data found, initializing new storage", "SecureStorage");
+            if (!flushToEEPROM()) {
+                Logger::error("Failed to initialize NVS in EEPROM", "SecureStorage");
+                _ready = false;
 
-            return false;
+                return false;
+            }
+        } else {
+            _unlesbar = true;
+            Logger::error("NVS unlesbar -- Sektor wird NICHT ueberschrieben", "SecureStorage");
         }
     }
 
     _ready = true;
 
     return true;
+}
+
+/**
+ * @brief Sieht der EEPROM-Sektor unbeschrieben aus?
+ *
+ * Geloeschter Flash ist 0xFF; ein genullter Sektor kommt bei manchen Werkzeugen vor.
+ * Alles andere heisst: Da steht etwas, das jemandem gehoert.
+ *
+ * @return true wenn der Kopfbereich ausschliesslich 0xFF oder ausschliesslich 0x00 ist
+ */
+auto SecureStorage::sektorLeer() -> bool {
+    // Der Kopf reicht als Zeuge: Steht dort weder Magic noch Nutzdaten, hat nie
+    // jemand etwas abgelegt. Ein paar Bytes mehr als die sechs des Kopfes, damit ein
+    // halb geschriebener Kopf nicht als "leer" durchgeht.
+    const int PRUEFBYTES = 32;
+    bool nurFF = true;
+    bool nur00 = true;
+    for (int i = 0; i < PRUEFBYTES && i < static_cast<int>(_eepromSize); ++i) {
+        const uint8_t b = EEPROM.read(i);
+        if (b != 0xFF) {
+            nurFF = false;
+        }
+        if (b != 0x00) {
+            nur00 = false;
+        }
+        if (!nurFF && !nur00) {
+            return false;
+        }
+    }
+    return nurFF || nur00;
 }
 
 /**
@@ -104,7 +147,7 @@ auto SecureStorage::begin() -> bool {
  *
  * @return true on success false on failure
  */
-auto const SecureStorage::loadToMemory() -> bool {
+auto SecureStorage::loadToMemory() -> bool {
     // 2 bytes length + 4 bytes magic
     const size_t headerSize = 6;
 
@@ -167,7 +210,7 @@ auto const SecureStorage::loadToMemory() -> bool {
  *
  * @return true on success false on failure
  */
-auto const SecureStorage::flushToEEPROM() -> bool {
+auto SecureStorage::flushToEEPROM() -> bool {
     const size_t headerSize = 6;
     size_t payloadMax = _eepromSize - headerSize;
 
@@ -221,6 +264,22 @@ auto SecureStorage::put(const char* key, const char* value) -> bool {
             Logger::error("SecureStorage not initialized", "SecureStorage");
             return false;
         };
+    }
+
+    // Unveraenderter Wert: NICHT schreiben. Jedes flushToEEPROM() loescht und
+    // beschreibt denselben Flash-Sektor, in dem als einziges Exemplar die
+    // WLAN-Zugangsdaten liegen. Der Bootloop-Zaehler tat das mehrmals je Start,
+    // ohne dass sich etwas geaendert haette.
+    const char* bisher = _doc[key];
+    if (bisher != nullptr && value != nullptr && strcmp(bisher, value) == 0) {
+        return true;
+    }
+
+    if (_unlesbar) {
+        // Der Sektor wurde bewusst nicht ueberschrieben (siehe begin()). Jetzt tut es
+        // der Nutzer selbst -- das ist in Ordnung, soll aber im Protokoll stehen.
+        Logger::warn("NVS war unlesbar und wird jetzt durch neue Daten ersetzt", "SecureStorage");
+        _unlesbar = false;
     }
 
     _doc[key] = value;

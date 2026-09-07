@@ -44,6 +44,30 @@ class SlotApi {
     /// Schreibt die Konfiguration aus dem RAM in das Dateisystem -- nach einem
     /// Dateisystem-Update, dessen Abbild keine /slots.json mitbringt. true = geschrieben.
     static auto konfigurationSichern() -> bool;
+
+    /// Merkt vor, dass die Zweitschrift faellig ist. Geschrieben wird sie NICHT hier,
+    /// sondern erst Sekunden spaeter aus der Hauptschleife -- der zeitliche Abstand ist
+    /// der ganze Zweck (siehe SlotStore::sicherungSchreiben).
+    static void sicherungAnfordern();
+
+    /// Merkt vor, dass zusaetzlich die HAUPTdatei neu geschrieben werden soll --
+    /// zeitversetzt, zusammen mit der Zweitschrift. Gedacht fuer den ersten Start nach
+    /// einem Dateisystem-Update: Dessen Rueckschreibung faellt unmittelbar hinter zwei
+    /// Megabyte Flash-Programmierung, und genau dieser Zeitpunkt steht im Verdacht.
+    /// Ein zweiter Schreibvorgang Sekunden spaeter trifft eine ganz andere Situation.
+    static void hauptdateiErneuern();
+
+    /// Haelt fest, dass auf diesem Geraet schon einmal etwas eingerichtet war --
+    /// BEWUSST im EEPROM, also im anderen Flash-Sektor als das Dateisystem. Nur so
+    /// laesst sich "verlorengegangen" von "fabrikneu" unterscheiden, wenn ausgerechnet
+    /// das Dateisystem der Verursacher war. Genau diese Unterscheidung fehlte am
+    /// 07.09.2026: Das Geraet sah aus wie frisch ausgepackt.
+    static void merkeEingerichtet();
+    static auto warSchonEingerichtet() -> bool;
+
+    /// In die Hauptschleife einhaengen. Schreibt die Zweitschrift, sobald der Abstand
+    /// zur Hauptschreibung erreicht ist. Sonst kostet der Aufruf einen Zahlenvergleich.
+    static void sicherungPruefen();
 };
 
 void handleSlotsGet(Webserver* webserver);
