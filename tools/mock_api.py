@@ -62,31 +62,56 @@ def _dateizustand():
 def _verzeichnis():
     """Verzeichnis wie handleDateien() seit v0.5.6.
 
-    Der Mock kennt kein echtes Dateisystem und meldet deshalb glaubwuerdige Zahlen:
-    die Konfigurationsdateien einzeln, /web als Summe. MOCK_DATEIVERLUST=1 nimmt die
-    Hauptdatei heraus -- dann ist genau der Zustand vom 07.09.2026 nachstellbar,
-    einschliesslich des Ueberhangs, der einen verwaisten Block anzeigen wuerde.
+    Der Ordner /web wird REKURSIV aus dem echten firmware/data/ gezaehlt, nicht
+    geschaetzt: Eine fest eingetragene Zahl lief sofort auseinander -- die erste Fassung
+    stand auf 31 Dateien, tatsaechlich sind es 27 in drei Ebenen. Und genau dieser
+    Zaehlfehler war es, der am Geraet einen verwaisten Block von 334 KB meldete, den es
+    nicht gab.
+
+    fsBelegt wird wie bei LittleFS aus Bloecken gerechnet (jede Datei auf ganze Bloecke
+    aufgerundet, dazu zwei Bloecke Metadaten je Ordner), damit der Ueberhang sich hier
+    genauso verhaelt wie am Geraet.
     """
+    BLOCK = 8192
+    basis = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "firmware", "data")
+    webWurzel = os.path.join(basis, "web")
+
+    webAnzahl, webBytes, ordnerZahl, bloeckeWeb = 0, 0, 0, 0
+    for wurzel, unterordner, dateinamen in os.walk(webWurzel):
+        ordnerZahl += 1
+        for name in dateinamen:
+            groesse = os.path.getsize(os.path.join(wurzel, name))
+            webAnzahl += 1
+            webBytes += groesse
+            bloeckeWeb += -(-groesse // BLOCK)
+
     zustand = _dateizustand()
     dateien = [{"name": name, "groesse": groesse}
-               for name, groesse in (("slots.json", zustand["slots"]),
+               for name, groesse in (("config.json", zustand["config"]),
                                      ("slots.bak.json", zustand["slotsSicherung"]),
+                                     ("slots.json", zustand["slots"]),
                                      ("slots.json.defekt", zustand["slotsDefekt"]),
-                                     ("slots.json.tmp", zustand["slotsTemp"]),
-                                     ("config.json", zustand["config"]))
+                                     ("slots.json.tmp", zustand["slotsTemp"]))
                if groesse is not None]
-    WEB_ANZAHL, WEB_BYTES = 31, 196_608
-    summe = WEB_BYTES + sum(d["groesse"] for d in dateien)
-    belegt = 213000
+    summe = webBytes + sum(d["groesse"] for d in dateien)
+    # Auf ganze Bloecke gerundet -- so belegt LittleFS die Dateien wirklich.
+    summeBloecke = bloeckeWeb * BLOCK + sum(-(-d["groesse"] // BLOCK) * BLOCK for d in dateien)
+
+    # Belegt = gerundete Dateien plus zwei Bloecke Metadaten je Ordner.
+    belegt = summeBloecke + 2 * (ordnerZahl + 1) * BLOCK  # Wurzelverzeichnis eingeschlossen
+
     return {
         "dateien": dateien,
-        "ordner": [{"name": "web", "anzahl": WEB_ANZAHL, "groesse": WEB_BYTES}],
-        "anzahl": WEB_ANZAHL + len(dateien),
+        "ordner": [{"name": "web", "anzahl": webAnzahl, "groesse": webBytes}],
+        "anzahl": webAnzahl + len(dateien),
         "summe": summe,
+        "summeBloecke": summeBloecke,
         "fsGesamt": 2072576,
         "fsBelegt": belegt,
-        "ueberhang": max(0, belegt - summe),
-        "blockGroesse": 8192,
+        # Gegen die GERUNDETE Summe, wie in der Firmware: Der Vergleich gegen die rohen
+        # Bytes zeigte gut 200 KB "Ueberhang", die reine Aufrundung waren.
+        "ueberhang": max(0, belegt - summeBloecke),
+        "blockGroesse": BLOCK,
     }
 
 
