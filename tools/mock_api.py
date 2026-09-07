@@ -44,6 +44,52 @@ def _fw_version():
         return "unknown"
 
 
+def _dateizustand():
+    """Dateizustand wie handleGeraet() seit v0.5.5.
+
+    Groesse als Zahl heisst "vorhanden", None heisst "gibt es nicht" -- genau diese
+    Unterscheidung fehlte bei der Ursachensuche am 07.09.2026 und ist der Grund fuer
+    den Endpunkt. Mit MOCK_DATEIVERLUST=1 laesst sich der Fall nachstellen, in dem die
+    Hauptdatei verschwunden ist und die Zweitschrift einspringt.
+    """
+    if os.environ.get("MOCK_DATEIVERLUST") == "1":
+        return {"slots": None, "slotsSicherung": 3819, "slotsDefekt": None,
+                "slotsTemp": None, "config": 96}
+    return {"slots": 3819, "slotsSicherung": 3819, "slotsDefekt": None,
+            "slotsTemp": None, "config": 96}
+
+
+def _verzeichnis():
+    """Verzeichnis wie handleDateien() seit v0.5.6.
+
+    Der Mock kennt kein echtes Dateisystem und meldet deshalb glaubwuerdige Zahlen:
+    die Konfigurationsdateien einzeln, /web als Summe. MOCK_DATEIVERLUST=1 nimmt die
+    Hauptdatei heraus -- dann ist genau der Zustand vom 07.09.2026 nachstellbar,
+    einschliesslich des Ueberhangs, der einen verwaisten Block anzeigen wuerde.
+    """
+    zustand = _dateizustand()
+    dateien = [{"name": name, "groesse": groesse}
+               for name, groesse in (("slots.json", zustand["slots"]),
+                                     ("slots.bak.json", zustand["slotsSicherung"]),
+                                     ("slots.json.defekt", zustand["slotsDefekt"]),
+                                     ("slots.json.tmp", zustand["slotsTemp"]),
+                                     ("config.json", zustand["config"]))
+               if groesse is not None]
+    WEB_ANZAHL, WEB_BYTES = 31, 196_608
+    summe = WEB_BYTES + sum(d["groesse"] for d in dateien)
+    belegt = 213000
+    return {
+        "dateien": dateien,
+        "ordner": [{"name": "web", "anzahl": WEB_ANZAHL, "groesse": WEB_BYTES}],
+        "anzahl": WEB_ANZAHL + len(dateien),
+        "summe": summe,
+        "fsGesamt": 2072576,
+        "fsBelegt": belegt,
+        "ueberhang": max(0, belegt - summe),
+        "blockGroesse": 8192,
+    }
+
+
 FW_VERSION = _fw_version()
 
 
@@ -401,7 +447,20 @@ class Handler(BaseHTTPRequestHandler):
                                          time.localtime(NTP_LETZTER_SYNC)),
                 zeitzone=ZEITZONE, rotation=ROTATION,
                 werte=len(belegt), maxWerte=MAX_SLOTS,
-                seiten=len(seiten), maxSeiten=MAX_PAGES))
+                seiten=len(seiten), maxSeiten=MAX_PAGES,
+                # Speicherzustand wie handleGeraet() seit v0.5.5. Der Mock kennt kein
+                # echtes Dateisystem; er meldet den Normalfall (Hauptdatei und
+                # Zweitschrift vorhanden, keine Reste). Ueber MOCK_DATEIVERLUST=1
+                # laesst sich der Verlustfall nachstellen -- sonst waere der neue
+                # Anzeigepfad nie ohne echtes Geraet zu pruefen.
+                resetGrund="Power on",
+                flashEcht=4194304, flashKonfiguriert=4194304,
+                fsGesamt=2072576, fsBelegt=213000,
+                dateien=_dateizustand()))
+        if p == "/api/v1/dateien":
+            # Wie handleDateien(): was liegt wirklich auf dem Dateisystem, und wie
+            # verhaelt sich der belegte Platz zur Summe der Dateien.
+            return self._json(200, ergebnis(True, "Dateien", **_verzeichnis()))
         if p == "/api/v1/slots/status":
             # Antwortform wie handleSlotsStatus(): Werte plus Geraetezustand (E11).
             return self._json(200, {"slots": self._status(), "geraet": {

@@ -37,6 +37,22 @@ leichten Aufruf: `version`, `freeHeap`, `heapFrag`, `uptimeSec`, `verbunden`, `r
 `seiten`/`maxSeiten`. Bewusst getrennt von `/api/v1/slots/status`: Der ruft die
 Datenquellen ab, dieser nicht.
 
+Seit v0.5.5 kommen Angaben zum **Speicherzustand** dazu: `resetGrund` (trennt einen
+Einschaltvorgang von Watchdog oder Unterspannung), `flashEcht`/`flashKonfiguriert` (weichen
+sie ab, passt das Flash-Layout nicht zur Hardware), `fsGesamt`/`fsBelegt` und ein Objekt
+`dateien` mit `slots`, `slotsSicherung`, `slotsDefekt`, `slotsTemp` und `config`. Eine Zahl
+ist die Dateigröße, `null` heißt **gibt es nicht** — „fehlt" und „ist leer" sind zwei
+verschiedene Befunde.
+
+`GET /api/v1/dateien` (seit v0.5.6) beantwortet die Frage, was tatsächlich auf dem
+Dateisystem liegt: `dateien[]` (Name und Größe je Datei im Wurzelverzeichnis), `ordner[]`
+(Name, Anzahl und Summe je Unterordner — `/web` einzeln aufzuführen wäre auf diesem Chip
+verschwendeter Speicher), dazu `anzahl`, `summe`, `fsGesamt`, `fsBelegt`, `blockGroesse`
+und `ueberhang`. Der `ueberhang` ist `fsBelegt - summe`: Liegt der belegte Platz deutlich
+über der Summe aller Dateien, steckt im Flash ein Block, den das Dateisystem nicht mehr
+zuordnet. Da jede Datei auf ganze Blöcke aufgerundet wird, ist ein kleiner Überhang normal
+— die Bewertung bleibt beim Menschen, das Gerät liefert die Zahlen.
+
 `POST /api/v1/slots/restore` nimmt eine komplette Sicherung entgegen (dasselbe Dokument,
 das `GET /api/v1/slots` liefert), prüft sie, übernimmt sie und schreibt **einmal**. Vorher
 lief eine Wiederherstellung über bis zu 25 Einzelaufrufe, von denen jeder schrieb — und
@@ -119,6 +135,7 @@ zurechtgebogen — sonst bekäme man „gespeichert" für etwas, das man nie ein
 | `GET`/`POST` | `/api/v1/ntp/config` · `/api/v1/ntp/status` · `/api/v1/ntp/sync` | Zeit |
 | `GET`/`POST` | `/api/v1/display/rotation` | Bildschirmausrichtung 0–7 |
 | `GET` | `/api/v1/logs` · `/api/v1/logs/download` | Protokoll |
+| `GET` | `/api/v1/dateien` | Verzeichnis des Dateisystems (Diagnose) |
 | `POST` | `/api/v1/logs/clear` · `/api/v1/reboot` | Protokoll leeren, Neustart |
 | `GET`/`POST` | `/api/v1/token/check` · `/api/v1/token/save` | Passwortschutz prüfen/setzen |
 

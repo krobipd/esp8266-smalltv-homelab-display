@@ -423,10 +423,17 @@ static void otaBrocken(Webserver* webserver, HTTPUpload& upload, int mode) {
                     // Neues Dateisystem einhaengen und die Einrichtung hineinschreiben --
                     // sonst waere sie nach dem Update weg (N15).
                     if (LittleFS.begin()) {
-                        const bool uebernommen =
-                            SlotApi::konfigurationSichern() && configManager.save();
-                        Logger::info(uebernommen ? "Konfiguration ins neue Dateisystem uebernommen"
-                                                 : "Konfiguration NICHT uebernommen",
+                        // KEIN && : Der Kurzschluss liess configManager.save() stumm
+                        // ausfallen, sobald die Slot-Sicherung scheiterte -- ein
+                        // Fehlschlag nahm den zweiten Schreibvorgang mit, und zwar
+                        // ausgerechnet den, der die Zugangsdaten mitfuehrt.
+                        const bool slotsOk = SlotApi::konfigurationSichern();
+                        const bool cfgOk = configManager.save();
+                        Logger::info(slotsOk ? "Werte ins neue Dateisystem uebernommen"
+                                             : "Werte NICHT uebernommen",
+                                     "API::OTA");
+                        Logger::info(cfgOk ? "Einstellungen ins neue Dateisystem uebernommen"
+                                           : "Einstellungen NICHT uebernommen",
                                      "API::OTA");
                     } else {
                         Logger::error("Neues Dateisystem laesst sich nicht mounten", "API::OTA");

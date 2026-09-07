@@ -109,7 +109,10 @@ auto RescueMode::checkBootLoop() -> bool {
                      "RescueMode");
     }
 
-    configManager.secure.put("rescue_last_boot_clean", "0");
+    // rescue_last_boot_clean gibt es nicht mehr: Der Wert war exakt (Zaehler == 0) und
+    // kostete eine zweite Sektorloeschung je Startphase. Vier Schreibvorgaenge pro Boot
+    // trafen denselben Sektor, in dem als EINZIGES Exemplar die WLAN-Zugangsdaten
+    // liegen -- fuer eine Zahl, die sich ableiten laesst. Jetzt sind es zwei.
 
     if (!readOk || data.magic != RTC_MAGIC) {
         data.magic = RTC_MAGIC;
@@ -153,8 +156,9 @@ auto RescueMode::markBootStable() -> void {
     data.crashCount = 0;
     writeRtcBoot(data);
 
+    // Der Leerlauf-Riegel in SecureStorage::put() sorgt dafuer, dass hier gar nichts
+    // geschrieben wird, wenn der Zaehler ohnehin schon 0 ist.
     configManager.secure.put("rescue_persistent_crash_count", "0");
-    configManager.secure.put("rescue_last_boot_clean", "1");
 
     Logger::info("Boot stable, crash counter reset (RTC + persistent)", "RescueMode");
 }
@@ -315,8 +319,10 @@ static void handleRescueStatus() {
     doc["boot_counter_rtc"] = rtcBootCounter;
 
     String persistentStr = configManager.secure.get("rescue_persistent_crash_count", "0");
-    doc["boot_counter_persistent"] = persistentStr.toInt();
-    doc["last_boot_clean"] = configManager.secure.get("rescue_last_boot_clean", "1");
+    const long persistentCount = persistentStr.toInt();
+    doc["boot_counter_persistent"] = persistentCount;
+    // Abgeleitet statt gespeichert -- siehe checkBootLoop().
+    doc["last_boot_clean"] = persistentCount == 0 ? "1" : "0";
 
     String json;
     serializeJson(doc, json);
@@ -486,7 +492,6 @@ static void handleRescueReset() {
 
     // Reset persistent storage
     configManager.secure.put("rescue_persistent_crash_count", "0");
-    configManager.secure.put("rescue_last_boot_clean", "1");
 
     setzeErgebnis(doc, true, "Rescue counters reset");
 

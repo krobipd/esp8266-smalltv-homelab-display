@@ -45,7 +45,24 @@ for CXX in $UEBERSETZER; do
             "$BASIS/tests/host/test_$t.cpp" -o "/tmp/smalltv-$t"
         "/tmp/smalltv-$t"
     done
-    echo "Host-Tests: 5x OK mit $(basename "$CXX") (Sanitizer, Warnungen als Fehler)"
+    # Der SlotStore braucht zusaetzlich die Dateisystem-Attrappe (tests/host/attrappe):
+    # Er ist die einzige Stelle, an der ueber den VERBLEIB der Einrichtung entschieden
+    # wird -- fehlende Datei, kaputte Datei, Rueckfall auf die Zweitschrift. Bis v0.5.5
+    # hat kein Test diese Entscheidungen je ausgefuehrt.
+    "$CXX" -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined \
+        -fno-omit-frame-pointer -I "$ARDUINOJSON" -I "$BASIS/firmware/include" \
+        -I "$BASIS/tests/host/attrappe" \
+        "$BASIS/tests/host/test_slotstore.cpp" -o /tmp/smalltv-slotstore
+    /tmp/smalltv-slotstore
+    # SecureStorage entscheidet, ob der Sektor mit den WLAN-Zugangsdaten ueberschrieben
+    # wird -- das einzige Exemplar auf dem Geraet. Bis v0.5.6 tat er das bei JEDEM
+    # Lesefehler, und kein Test hat es je bemerkt.
+    "$CXX" -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined \
+        -fno-omit-frame-pointer -DARDUINOJSON_ENABLE_ARDUINO_STRING=1 -I "$ARDUINOJSON" \
+        -I "$BASIS/firmware/include" -I "$BASIS/tests/host/attrappe" \
+        "$BASIS/tests/host/test_securestorage.cpp" -o /tmp/smalltv-securestorage
+    /tmp/smalltv-securestorage
+    echo "Host-Tests: 7x OK mit $(basename "$CXX") (Sanitizer, Warnungen als Fehler)"
 done
 
 # EINE Autoritaet fuer die Grenzwerte: Die Firmware druckt sie, der Mock haelt sie als
@@ -137,6 +154,11 @@ node "$BASIS/tests/web/test_sicherung.mjs"
 # versteht zusaetzlich die beiden alten Formate -- das traegt das Fenster zwischen
 # Firmware- und Dateisystem-Update.
 node "$BASIS/tests/web/test_antwortformat.mjs"
+
+# Der Mock darf im Geraetekasten nicht weniger liefern als die Firmware. Die Feldliste
+# wird dafuer aus handleGeraet() GELESEN, nicht gepflegt -- sonst faellt ein neues
+# Firmware-Feld niemandem auf (genau so entstand die Luecke bei v0.5.5).
+python3 "$BASIS/tests/tools/test_geraet_paritaet.py"
 
 # Cache-Regeln der Oberflaeche -- ebenfalls gegen den Mock, weil nur dort echte
 # HTTP-Kopfzeilen entstehen.

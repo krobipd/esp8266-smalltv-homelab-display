@@ -33,12 +33,21 @@ class SecureStorage {
     // Set the public salt (should be called before begin())
     static void setSalt(const String& salt);
 
+    /// true, wenn im Sektor etwas steht, das sich nicht lesen liess. Dann wurde er
+    /// BEWUSST nicht ueberschrieben -- ein Lesefehler kann voruebergehend sein, die
+    /// WLAN-Zugangsdaten sind es nicht. Ein Neustart darf es also nochmal versuchen.
+    auto datenUnlesbar() const -> bool { return _unlesbar; }
+
    private:
     size_t _eepromSize;
     bool loadToMemory();
     bool flushToEEPROM();
+    /// Sieht der Sektor fabrikneu aus (nur 0xFF oder nur 0x00)? Nur dann darf begin()
+    /// von sich aus hineinschreiben.
+    bool sektorLeer();
     JsonDocument _doc;
     bool _ready = false;
+    bool _unlesbar = false;
 };
 
 #endif  // SECURE_STORAGE_H

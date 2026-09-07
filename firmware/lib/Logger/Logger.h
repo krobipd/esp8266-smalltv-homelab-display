@@ -28,7 +28,14 @@ enum LogLevel { LOG_DEBUG, LOG_INFO, LOG_WARN, LOG_ERROR };
 // Heartbeat (alle zehn Sekunden eine Speicherzeile) leergeschrieben. Der ist weg,
 // also ist Platz fuer das, was tatsaechlich passiert -- Start, WLAN, Update.
 static constexpr LogLevel LOG_MIN_LEVEL = LOG_INFO;
-static constexpr size_t LOG_BUFFER_MAX_ENTRIES = 20;
+// 32 statt 20 (v0.5.5): Ein vollstaendiger Startvorgang schreibt rund sechzehn Zeilen,
+// und danach verdraengten Zeitabgleich und Stabilitaetsmeldung genau die frueheren --
+// ConfigManager und SecureStorage waren bei JEDEM Abruf schon herausgefallen. Bei der
+// Ursachensuche am 07.09.2026 fehlten dadurch die Zeilen, auf die es angekommen waere.
+// Preis: 12 * 96 = 1152 Byte mehr im Heap. Bewusst bezahlt -- ein Protokoll, das den
+// Start nicht vollstaendig fasst, ist bei genau der Sorte Fehler wertlos, fuer die es
+// da ist.
+static constexpr size_t LOG_BUFFER_MAX_ENTRIES = 32;
 static constexpr size_t LOG_ENTRY_MAX_LEN = 96;
 
 class Logger {

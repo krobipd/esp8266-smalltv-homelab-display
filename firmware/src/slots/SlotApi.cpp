@@ -21,6 +21,7 @@
 
 #include <ArduinoJson.h>
 #include <ESP8266WiFi.h>
+#include <LittleFS.h>  // Dateizustand fuer /api/v1/geraet
 
 #include "project_version.h"
 #include <uri/UriBraces.h>
@@ -56,10 +57,21 @@ char g_ladeWarnung[96] = {0};
 /// Datei zurueckgeladen und die Fehlerantwort gesendet. Vorher existierten dafuer
 /// zwei Idiome nebeneinander -- Kopie-zurueck und Datei-Reload -- und die
 /// Warnungs-Loeschung war nur in einem von drei Handlern implementiert.
+/// Zeitpunkt der letzten Hauptschreibung; 0 = keine Zweitschrift faellig.
+uint32_t g_sicherungFaelligSeitMs = 0;
+/// Soll bei der naechsten faelligen Sicherung auch die Hauptdatei neu geschrieben werden?
+bool g_hauptdateiErneuern = false;
+/// Abstand zwischen Haupt- und Zweitschreibung. Gross genug, dass beide nicht in
+/// dieselbe Flash-Aktivitaet fallen, klein genug, dass ein Nutzer das Geraet danach
+/// nicht schon wieder abgesteckt hat.
+const uint32_t SICHERUNG_ABSTAND_MS = 15000;
+
 bool persistiere(Webserver* webserver) {
     char fehler[96];
     if (SlotStore::save(*g_cfg, fehler, sizeof(fehler))) {
         g_ladeWarnung[0] = 0;
+        SlotApi::merkeEingerichtet();
+        SlotApi::sicherungAnfordern();
         return true;
     }
     char reloadFehler[96];
@@ -97,7 +109,95 @@ auto SlotApi::konfigurationSichern() -> bool {
         return false;
     }
     g_ladeWarnung[0] = 0;
+    SlotApi::merkeEingerichtet();
+    // Vorgemerkt, aber auf DIESEM Weg nicht mehr ausgefuehrt: Nach einem
+    // Dateisystem-Update folgt in handleOtaFinished delay(5000) + ESP.restart(), die
+    // Schleife laeuft also nie wieder an und die 15 s verstreichen nicht. Die
+    // Zweitschrift nach einem FS-Update entsteht stattdessen beim naechsten Start
+    // ueber die !exists-Pruefung in main.cpp -- die deshalb nicht entfallen darf.
+    // Der Aufruf bleibt trotzdem stehen: konfigurationSichern() wird nicht nur vom
+    // OTA-Pfad benutzt, und ohne Neustart traegt er dort ganz normal.
+    SlotApi::sicherungAnfordern();
     return true;
+}
+
+void SlotApi::merkeEingerichtet() {
+    // Die Bedingung steht HIER und nicht bei den Aufrufern: Sonst haette jeder
+    // Speicherpfad seine eigene Fassung davon, was "eingerichtet" heisst, und einer
+    // liefe frueher oder spaeter auseinander. Standardwerte oder eine geaenderte
+    // Helligkeit sind keine Einrichtung -- sonst meldete ein fabrikneues Geraet spaeter
+    // einen Verlust, den es nie gab.
+    if (g_cfg == nullptr) {
+        return;
+    }
+    bool etwasEingerichtet = false;
+    for (const auto& s : g_cfg->slots) {
+        if (s.url[0] != 0) {
+            etwasEingerichtet = true;
+            break;
+        }
+    }
+    if (!etwasEingerichtet) {
+        return;
+    }
+
+    // Absichtlich im EEPROM und nicht im Dateisystem: Nur so laesst sich spaeter
+    // "die Einrichtung ist verlorengegangen" von "das Geraet ist fabrikneu"
+    // unterscheiden, wenn das Dateisystem selbst der Verursacher war. Der
+    // Leerlauf-Riegel in SecureStorage::put() macht den Aufruf nach dem ersten Mal
+    // kostenlos -- geschrieben wird der Sektor genau einmal im Geraeteleben.
+    configManager.secure.put("cfg_eingerichtet", "1");
+}
+
+auto SlotApi::warSchonEingerichtet() -> bool {
+    return configManager.secure.get("cfg_eingerichtet", "0") == "1";
+}
+
+void SlotApi::hauptdateiErneuern() {
+    g_hauptdateiErneuern = true;
+}
+
+void SlotApi::sicherungAnfordern() {
+    g_sicherungFaelligSeitMs = millis();
+    // Der Wert 0 heisst "nichts faellig". Trifft millis() genau darauf, einfach eine
+    // Millisekunde weiterruecken -- sonst unterbliebe die Zweitschrift stillschweigend.
+    if (g_sicherungFaelligSeitMs == 0) {
+        g_sicherungFaelligSeitMs = 1;
+    }
+}
+
+void SlotApi::sicherungPruefen() {
+    if (g_sicherungFaelligSeitMs == 0 || g_cfg == nullptr) {
+        return;
+    }
+    // Solange eine Ladewarnung ansteht, wird NICHT gesichert. Ein Geraet, das dem
+    // Nutzer gerade meldet "etwas ist schiefgegangen", darf seinen Notstand nicht
+    // ueber die letzte gute Kopie schreiben -- sonst zerstoerte die Zweitschrift
+    // genau das, wofuer sie da ist. Der Auftrag bleibt vorgemerkt.
+    //
+    // Speichert der Nutzer nach der Warnung bewusst etwas, loescht persistiere()
+    // die Warnung VOR sicherungAnfordern(); dann greift dieser Riegel nicht mehr,
+    // und sein Stand wird zur neuen Zweitschrift. Genau so soll es sein.
+    if (g_ladeWarnung[0] != 0) {
+        return;
+    }
+    if (!elapsed(millis(), g_sicherungFaelligSeitMs, SICHERUNG_ABSTAND_MS)) {
+        return;
+    }
+    g_sicherungFaelligSeitMs = 0;
+
+    // Zuerst die Hauptdatei, falls vorgemerkt (erster Start nach einem
+    // Dateisystem-Update): Ihr urspruenglicher Schreibvorgang fiel unmittelbar hinter
+    // zwei Megabyte Flash-Programmierung. Dieser hier faellt in den Leerlauf.
+    if (g_hauptdateiErneuern) {
+        g_hauptdateiErneuern = false;
+        char fehler[96];
+        if (!SlotStore::save(*g_cfg, fehler, sizeof(fehler))) {
+            Logger::error(fehler, "Slots");
+        }
+    }
+
+    SlotStore::sicherungSchreiben(*g_cfg);
 }
 
 void handleSlotsGet(Webserver* webserver) {
@@ -458,6 +558,49 @@ void handleGeraet(Webserver* webserver) {
     doc["zeitzone"] = NTPClient::zeitzone();
     doc["rotation"] = configManager.getLCDRotationSafe();
 
+    // ---- Zustand des Speichers ----
+    //
+    // Am 07.09.2026 verschwand die Einrichtung nach 18 Stunden ohne Strom, und keine
+    // dieser Zahlen war abrufbar: Der Startgrund und die echte Flash-Groesse standen
+    // nur im Rettungsmodus, und welche Dateien ueberhaupt existieren, konnte man gar
+    // nicht erfragen. Damit liess sich "Datei fehlt" nicht von "Geraet ist neu"
+    // unterscheiden -- die Ursachensuche hing an einem Ringpuffer, der laengst
+    // ueberschrieben war.
+    doc["resetGrund"] = ESP.getResetReason();  // NOLINT(readability-static-accessed-through-instance)
+    // Weichen die beiden ab, passt das Flash-Layout nicht zur Hardware -- dann steht
+    // das Dateisystem woanders, als der Linker annimmt.
+    doc["flashEcht"] = ESP.getFlashChipRealSize();  // NOLINT(readability-static-accessed-through-instance)
+    doc["flashKonfiguriert"] = ESP.getFlashChipSize();  // NOLINT(readability-static-accessed-through-instance)
+
+    FSInfo fsInfo;
+    if (LittleFS.info(fsInfo)) {
+        doc["fsGesamt"] = fsInfo.totalBytes;
+        // Liegt der belegte Platz deutlich ueber der Summe der Oberflaechen-Dateien,
+        // OBWOHL die Einrichtung fehlt, dann liegt sie als verwaister Block noch im
+        // Flash und wurde nur nicht mehr gefunden.
+        doc["fsBelegt"] = fsInfo.usedBytes;
+    }
+
+    JsonObject dateien = doc["dateien"].to<JsonObject>();
+    struct { const char* name; const char* pfad; } zuPruefen[] = {
+        {"slots", "/slots.json"},
+        {"slotsSicherung", "/slots.bak.json"},
+        {"slotsDefekt", "/slots.json.defekt"},
+        {"slotsTemp", "/slots.json.tmp"},
+        {"config", "/config.json"},
+    };
+    for (const auto& d : zuPruefen) {
+        File f = LittleFS.open(d.pfad, "r");
+        if (f) {
+            dateien[d.name] = f.size();
+            f.close();
+        } else {
+            // null statt 0: "gibt es nicht" ist etwas anderes als "ist leer", und
+            // genau diese Unterscheidung fehlte bei der Ursachensuche.
+            dateien[d.name] = nullptr;
+        }
+    }
+
     uint8_t werte = 0;
     uint8_t seitenMaske = 0;
     if (g_cfg != nullptr) {
@@ -481,6 +624,80 @@ void handleGeraet(Webserver* webserver) {
     sendeJson(webserver, HTTP_CODE_OK, doc);
 }
 
+/// Summiert einen Ordner: Anzahl und Bytes. Eine Ebene tief, mehr gibt es nicht.
+static void ordnerSumme(const char* pfad, uint16_t& anzahl, uint32_t& bytes) {
+    Dir d = LittleFS.openDir(pfad);
+    while (d.next()) {
+        if (d.isDirectory()) {
+            continue;
+        }
+        anzahl++;
+        bytes += static_cast<uint32_t>(d.fileSize());
+    }
+}
+
+/// GET /api/v1/dateien -- was liegt wirklich auf dem Dateisystem?
+///
+/// Am 07.09.2026 war genau das nicht erfragbar. "Die Einrichtung fehlt" liess sich
+/// nicht von "das Geraet ist neu" trennen, und ob im Flash noch ein verwaister Block
+/// steckt, war ueberhaupt nicht feststellbar. Deshalb rechnet das Geraet den
+/// Vergleich hier selbst: belegt gegen die Summe aller Dateien.
+void handleDateien(Webserver* webserver) {
+    JsonDocument doc;
+    setzeErgebnis(doc, true, "Dateien");
+
+    uint32_t summeAlle = 0;
+    uint16_t anzahlAlle = 0;
+
+    // Wurzelverzeichnis einzeln -- dort liegen die Konfigurationsdateien, und genau
+    // deren Vorhandensein ist die Frage. Ordner nur als Summe: /web hat rund dreissig
+    // Dateien, die einzeln aufzufuehren waere auf diesem Chip verschwendeter Heap.
+    JsonArray dateien = doc["dateien"].to<JsonArray>();
+    JsonArray ordner = doc["ordner"].to<JsonArray>();
+    Dir wurzel = LittleFS.openDir("/");
+    while (wurzel.next()) {
+        const String name = wurzel.fileName();
+        if (wurzel.isDirectory()) {
+            uint16_t anzahl = 0;
+            uint32_t bytes = 0;
+            ordnerSumme(("/" + name).c_str(), anzahl, bytes);
+            JsonObject o = ordner.add<JsonObject>();
+            o["name"] = name;
+            o["anzahl"] = anzahl;
+            o["groesse"] = bytes;
+            summeAlle += bytes;
+            anzahlAlle = static_cast<uint16_t>(anzahlAlle + anzahl);
+            continue;
+        }
+        JsonObject o = dateien.add<JsonObject>();
+        o["name"] = name;
+        o["groesse"] = static_cast<uint32_t>(wurzel.fileSize());
+        summeAlle += static_cast<uint32_t>(wurzel.fileSize());
+        anzahlAlle++;
+    }
+
+    doc["anzahl"] = anzahlAlle;
+    doc["summe"] = summeAlle;
+
+    FSInfo fsInfo;
+    if (LittleFS.info(fsInfo)) {
+        doc["fsGesamt"] = fsInfo.totalBytes;
+        doc["fsBelegt"] = fsInfo.usedBytes;
+        // Der eigentliche Befund: Liegt "belegt" deutlich ueber der Summe der Dateien,
+        // steckt im Flash ein Block, den das Dateisystem nicht mehr zuordnet -- also
+        // Daten, die noch da sind, aber nicht mehr gefunden werden. LittleFS rundet je
+        // Datei auf ganze Bloecke auf, deshalb ist ein Ueberhang normal; auffaellig
+        // wird er erst deutlich oberhalb dieser Rundung. Die Bewertung bleibt beim
+        // Menschen, das Geraet liefert nur die Zahlen.
+        doc["ueberhang"] = fsInfo.usedBytes > summeAlle
+                               ? static_cast<uint32_t>(fsInfo.usedBytes - summeAlle)
+                               : 0U;
+        doc["blockGroesse"] = fsInfo.blockSize;
+    }
+
+    sendeJson(webserver, HTTP_CODE_OK, doc);
+}
+
 void SlotApi::registerRoutes(Webserver* webserver) {
     geschuetzt(webserver, "/api/v1/slots", HTTP_GET, handleSlotsGet);
     geschuetzt(webserver, "/api/v1/slots", HTTP_POST, handleSlotsSave);
@@ -489,6 +706,7 @@ void SlotApi::registerRoutes(Webserver* webserver) {
     geschuetzt(webserver, "/api/v1/slots/settings", HTTP_POST, handleSlotsSettings);
     geschuetzt(webserver, "/api/v1/slots/restore", HTTP_POST, handleSlotsRestore);
     geschuetzt(webserver, "/api/v1/geraet", HTTP_GET, handleGeraet);
+    geschuetzt(webserver, "/api/v1/dateien", HTTP_GET, handleDateien);
 
     // Loeschen adressiert den Slot ueber die URL (/api/v1/slots/<i>) mit einem
     // Platzhalter (UriBraces) -- EINE Route statt zwoelf einzeln registrierter

@@ -31,9 +31,26 @@
 class SlotStore {
    public:
     /// Liest /slots.json (NICHT /config.json -- die gehoert der Basis-Firmware und wird
-    /// oeffentlich ausgeliefert). Fehlt die Datei, liefert sie Standardwerte und true;
-    /// eine vorhandene, aber kaputte Datei liefert false und laesst out unberuehrt.
-    static auto load(Config& out, char* errOut, size_t errSize) -> bool;
+    /// oeffentlich ausgeliefert). Fehlt die Datei, wird die Zweitschrift
+    /// /slots.bak.json versucht; erst wenn auch die fehlt, gelten Standardwerte
+    /// (Rueckgabe true). Eine vorhandene, aber kaputte Datei liefert false und laesst
+    /// out unberuehrt.
+    /// ausSicherung (optional) meldet, dass die Zweitschrift einspringen musste --
+    /// der Aufrufer soll das sichtbar machen, statt es zu verschlucken.
+    static auto load(Config& out, char* errOut, size_t errSize,
+                     bool* ausSicherung = nullptr) -> bool;
+
+    /// Schreibt die Zweitschrift /slots.bak.json.
+    ///
+    /// BEWUSST ein eigener, ZEITVERSETZTER Aufruf und nicht Teil von save():
+    /// Am 06./07.09.2026 ging eine Konfiguration verloren, die nachweislich auf dem
+    /// Flash lag (Abnahme 06.09., 14:56). Kein Pfad im Programm loescht sie -- die
+    /// tragfaehigste Erklaerung ist ein Metadaten-Commit, der die 18 Stunden ohne
+    /// Strom nicht ueberstanden hat. Gegen so etwas hilft KEINE Pruefung nach dem
+    /// Schreiben (sie liest ueber dieselbe eingehaengte Instanz), sondern nur eine
+    /// zweite Schreibung zu einem anderen Zeitpunkt: Ein einzelner schwacher Commit
+    /// trifft dann nicht beide Dateien.
+    static auto sicherungSchreiben(const Config& cfg) -> bool;
 
     /// Schreibt /slots.json atomar (Temporaerdatei + rename) -- bei jedem Aufruf,
     /// einen Nur-bei-Aenderung-Vergleich gibt es bewusst nicht (gespeichert wird
